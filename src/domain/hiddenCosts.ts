@@ -25,6 +25,12 @@ function saldoNoMes(sim: Simulation, mes: number): { mes: number; saldo: number 
   return { mes: r.mes, saldo: r.saldoFinal };
 }
 
+/** "o saldo caiu X%" ou, quando a TR corrige mais do que a parcela amortiza, "o saldo SUBIU X%". */
+function variacaoDoSaldo(meses: number, pctAmortizado: number, saldo: number): string {
+  const verbo = pctAmortizado >= 0 ? 'caiu' : 'subiu';
+  return `após ${meses} meses o saldo ${verbo} ${fmtPct(Math.abs(pctAmortizado))} (${fmtBRL(saldo)})`;
+}
+
 function itensFinanciamento(sim: Simulation): ItemOculto[] {
   const { fin, principal, input, paramsFin } = sim;
   const f = input.financiamento;
@@ -46,7 +52,12 @@ function itensFinanciamento(sim: Simulation): ItemOculto[] {
       id: 'fin-saldo-nao-cai',
       lado: 'financiamento',
       titulo: 'O saldo devedor demora a cair',
-      texto: `No ${f.sistema}, após ${a12.mes} meses você amortizou ${fmtPct(pct12)} do principal (saldo de ${fmtBRL(a12.saldo)}) e, após ${a60.mes} meses, ${fmtPct(pct60)} (saldo de ${fmtBRL(a60.saldo)}). Na PRICE o saldo cai ainda mais devagar no início, porque a parcela é quase só juros.`,
+      texto:
+        `No ${f.sistema}, partindo de ${fmtBRL(principal)}, ${variacaoDoSaldo(a12.mes, pct12, a12.saldo)} e ` +
+        `${variacaoDoSaldo(a60.mes, pct60, a60.saldo)}. ` +
+        (pct12 < 0 || pct60 < 0
+          ? 'Você paga em dia e ainda deve mais do que pegou: a TR corrige o saldo todo mês por mais do que a parcela amortiza, porque no começo a parcela é quase só juros.'
+          : 'Na PRICE o saldo cai ainda mais devagar no início, porque a parcela é quase só juros.'),
       valor: pct12,
     },
     {

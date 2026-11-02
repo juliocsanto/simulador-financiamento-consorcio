@@ -407,3 +407,25 @@ describe('TIR e custo efetivo do consórcio', () => {
     expect(razao?.texto).not.toMatch(/-\d+,\d+%/);
   });
 });
+
+describe('saldo do financiamento no "o que não te contam"', () => {
+  const textoSaldo = (sistema: 'SAC' | 'PRICE') => {
+    const input = defaultInput();
+    input.financiamento.sistema = sistema;
+    const c = compare(input);
+    return buildHiddenCosts(c.sim, c.fluxosCon, c.verdict).find((i) => i.id === 'fin-saldo-nao-cai')!.texto;
+  };
+
+  it('PRICE com TR: o saldo SOBE no início e o texto diz isso, sem percentual negativo', () => {
+    const t = textoSaldo('PRICE');
+    expect(t).toMatch(/após 12 meses o saldo subiu/);
+    expect(t).toMatch(/deve mais do que pegou/);
+    expect(t).not.toMatch(/-\d/);
+  });
+
+  it('SAC: o saldo cai desde o primeiro ano', () => {
+    const t = textoSaldo('SAC');
+    expect(t).toMatch(/após 12 meses o saldo caiu/);
+    expect(t).not.toMatch(/subiu/);
+  });
+});
