@@ -112,7 +112,9 @@ Consórcio:
   na espera (VP); taxa adm total paga; juros totais; front-loading (desembolso nos primeiros 5 anos);
   divergência entre régua ingênua e econômica quando os vencedores diferem.
 - **Riscos/sensibilidade**: mês de contemplação de equilíbrio (varrer k=1..prazo, primeiro k em que o
-  consórcio deixa de vencer); veredito com custo de oportunidade ±3 p.p.; alerta se Selic/juros ≥ 12%;
+  consórcio deixa de vencer; o VP **não é monotônico em k**, então se o consórcio já perde em k=1 a varredura
+  continua: se algum k vence, a situação é "só vence a partir do mês k" — nunca afirmar "não vence em nenhum
+  mês" sem ter varrido todos); veredito com custo de oportunidade ±3 p.p.; alerta se Selic/juros ≥ 12%;
   alerta de lance com embutido (rota cara, wiki); alerta "consórcio não garante data".
 - **Detalhamento**: tabela de custos por categoria (juros, amortização, correção monetária, MIP, DFI,
   tarifas, ITBI/registro, taxa adm, FR, seguro, aluguel, lance em caixa, complemento) + cronograma mês a mês.

@@ -26,8 +26,11 @@ export interface Razao {
 }
 
 export interface PontoEquilibrio {
-  situacao: 'sempre-vence' | 'equilibrio' | 'nunca-vence';
-  /** primeiro mês de contemplação em que o consórcio deixa de vencer */
+  situacao: 'sempre-vence' | 'equilibrio' | 'nunca-vence' | 'vence-tarde';
+  /**
+   * 'equilibrio': primeiro mês de contemplação em que o consórcio deixa de vencer.
+   * 'vence-tarde': perde no mês 1 e só vence a partir deste mês (VP não monotônico em k).
+   */
   mes: number | null;
 }
 
@@ -72,12 +75,19 @@ function vpDe(serie: readonly number[], coAa: number): number {
 function calcularEquilibrio(sim: Simulation, vpFin: number): PontoEquilibrio {
   const limiar = limiarEmpate(sim.input.comum.valorImovel);
   const co = sim.input.comum.custoOportunidadeAa;
-  for (let k = 1; k <= sim.input.consorcio.prazoMeses; k++) {
+  const prazo = sim.input.consorcio.prazoMeses;
+  const venceEm = (k: number): boolean => {
     const con = simulateConsortium(consortiumParams(sim.input, { mesContemplacao: k }));
-    const vpCon = vpDe(serieTotalConsorcio(con), co);
-    if (vpFin - vpCon <= limiar) {
-      return k === 1 ? { situacao: 'nunca-vence', mes: null } : { situacao: 'equilibrio', mes: k };
+    return vpFin - vpDe(serieTotalConsorcio(con), co) > limiar;
+  };
+  for (let k = 1; k <= prazo; k++) {
+    if (venceEm(k)) continue;
+    if (k > 1) return { situacao: 'equilibrio', mes: k };
+    // Perde no mês 1. O VP não é monotônico em k, então "nunca vence" só vale se nenhum k vencer.
+    for (let j = 2; j <= prazo; j++) {
+      if (venceEm(j)) return { situacao: 'vence-tarde', mes: j };
     }
+    return { situacao: 'nunca-vence', mes: null };
   }
   return { situacao: 'sempre-vence', mes: null };
 }
@@ -170,6 +180,10 @@ function riscos(sim: Simulation, sens: Sensibilidade): string[] {
   if (eq.situacao === 'equilibrio' && eq.mes !== null) {
     out.push(
       `Mês de equilíbrio: se a contemplação demorar até o mês ${eq.mes} ou mais, o consórcio deixa de compensar. Você assumiu o mês ${sim.con.contemplacao.mes}.`,
+    );
+  } else if (eq.situacao === 'vence-tarde' && eq.mes !== null) {
+    out.push(
+      `Com contemplação cedo o consórcio não vence; ele só passa a vencer a partir do mês ${eq.mes}. Você assumiu o mês ${sim.con.contemplacao.mes}.`,
     );
   } else if (eq.situacao === 'sempre-vence') {
     out.push('O consórcio vence em qualquer mês de contemplação possível neste cenário (o prazo total do grupo é o limite).');

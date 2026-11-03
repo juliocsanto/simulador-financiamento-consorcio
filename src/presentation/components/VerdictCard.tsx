@@ -40,7 +40,13 @@ export function VerdictCard({ verdict }: { verdict: Verdict }) {
       <p className="nota">
         Mês de equilíbrio da contemplação:{' '}
         <strong>
-          {eq.situacao === 'equilibrio' ? `mês ${eq.mes}` : eq.situacao === 'sempre-vence' ? 'o consórcio vence em qualquer mês' : 'o consórcio não vence em nenhum mês'}
+          {eq.situacao === 'equilibrio'
+            ? `mês ${eq.mes}`
+            : eq.situacao === 'vence-tarde'
+              ? `o consórcio só vence a partir do mês ${eq.mes}`
+              : eq.situacao === 'sempre-vence'
+                ? 'o consórcio vence em qualquer mês'
+                : 'o consórcio não vence em nenhum mês'}
         </strong>
         .
       </p>
