@@ -20,5 +20,13 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**'],
+      // main.tsx: bootstrap do ReactDOM; types.ts/ports.ts: só tipos (sem código em runtime).
+      exclude: ['src/main.tsx', 'src/domain/types.ts', 'src/application/ports.ts', 'src/vite-env.d.ts'],
+      reporter: ['text', 'html'],
+      thresholds: { statements: 90, branches: 90, functions: 90, lines: 90 },
+    },
   },
 });

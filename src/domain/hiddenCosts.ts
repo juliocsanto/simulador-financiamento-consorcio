@@ -130,6 +130,8 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
   const textoEq =
     eq.situacao === 'equilibrio' && eq.mes !== null
       ? `Se a contemplação passar do mês ${eq.mes}, o consórcio deixa de vencer.`
+      : eq.situacao === 'vence-tarde' && eq.mes !== null
+        ? `Neste cenário o consórcio perde com contemplação cedo e só passa a vencer a partir do mês ${eq.mes}.`
       : eq.situacao === 'sempre-vence'
         ? 'Neste cenário o consórcio vence mesmo com contemplação no último mês do grupo.'
         : 'Neste cenário o consórcio não vence nem com contemplação imediata.';

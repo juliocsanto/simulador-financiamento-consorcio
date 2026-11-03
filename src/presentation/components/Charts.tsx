@@ -6,7 +6,10 @@ const COR_FIN = 'var(--cor-fin)';
 const COR_CON = 'var(--cor-con)';
 const ALTURA_GRAFICO = 280;
 
-const compacto = (v: number): string => {
+export const formatarValor = (v: number): string => fmtBRL(v);
+export const rotuloMes = (m: unknown): string => `Mês ${String(m)}`;
+
+export const compacto = (v: number): string => {
   const abs = Math.abs(v);
   if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace('.', ',')} mi`;
   if (abs >= 1_000) return `${Math.round(v / 1_000)} mil`;
@@ -29,7 +32,7 @@ function Grafico({ dados, chaveFin, chaveCon, titulo }: GraficoProps) {
           <CartesianGrid stroke="var(--cor-borda)" strokeDasharray="3 3" />
           <XAxis dataKey="mes" tick={{ fontSize: 12, fill: 'var(--cor-texto-suave)' }} label={{ value: 'mês', position: 'insideBottomRight', offset: -2, fontSize: 12 }} />
           <YAxis tickFormatter={compacto} width={56} tick={{ fontSize: 12, fill: 'var(--cor-texto-suave)' }} />
-          <Tooltip formatter={(v: number) => fmtBRL(v)} labelFormatter={(m) => `Mês ${m}`} />
+          <Tooltip formatter={formatarValor} labelFormatter={rotuloMes} />
           <Legend />
           <Line type="monotone" dataKey={chaveFin} name="Financiamento" stroke={COR_FIN} dot={false} strokeWidth={2} isAnimationActive={false} />
           <Line type="monotone" dataKey={chaveCon} name="Consórcio" stroke={COR_CON} dot={false} strokeWidth={2} isAnimationActive={false} />

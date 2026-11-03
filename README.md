@@ -57,6 +57,7 @@ A regra de dependência é verificável: `grep -rE "from ['\"](react|dexie)" src
 npm install
 npm run dev          # desenvolvimento
 npm test -- --run    # testes (Vitest)
+npm run test:coverage  # testes + cobertura (mínimo 90% em statements/branches/functions/lines; o CI exige)
 npm run build        # tsc --noEmit + vite build, saída em dist/
 npm run preview      # serve o build em http://localhost:4173/simulador-financiamento-consorcio/
 ```

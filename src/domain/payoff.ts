@@ -91,8 +91,10 @@ function fundoDeQuitacao(
       return { mesQuitacao: r.mes, vp, vantagemDoFundoVP: vpAmortizando - vp };
     }
   }
+  /* v8 ignore start -- defensivo: na última linha o saldo é 0, então o fundo (>0) sempre o alcança antes do loop acabar */
   return { mesQuitacao: null, vp, vantagemDoFundoVP: vpAmortizando - vp };
 }
+/* v8 ignore stop */
 
 function estrategia(
   params: FinancingCalcParams,
