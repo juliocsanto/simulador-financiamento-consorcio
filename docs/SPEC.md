@@ -92,13 +92,15 @@ Consórcio:
 - **Contemplação no mês k** (após pagar a parcela k): `base_k = C_k·(1+adm+FR)`; `L = lancePct·base_k`;
   `E = embutidoPct·base_k`; `caixaLance = L − E`. `SD −= caixaLance` (e `−= E` se embutidoAbateSaldo).
   `creditoDisponivel = C_k − E`. Imóvel comprado no mês k ao preço `V_k = V0·(1+valoriz)^(k/12)`.
-  `complemento = max(0, V_k − creditoDisponivel)` sai do bolso; se o crédito sobra, a sobra abate `SD`.
+  `complemento = max(0, V_k − creditoDisponivel)` sai do bolso; se o crédito sobra, a sobra abate `SD`;
+  o que passar de `SD` (não há o que abater) volta **em espécie** ao consorciado no mês k (Lei 11.795, art. 31).
   Custos de compra no mês k: `ITBI·V_k + registro·V_k + tarifaAvaliacaoConsorcio`.
 - Pós-contemplação: modo 'parcela' → `P = SD/(prazo − k)`; modo 'prazo' → mantém a parcela anterior até zerar.
   Após a contemplação o crédito não corrige; o saldo continua reajustando anualmente.
 - **Aluguel** pago nos meses 1..k: `R_t = R0·(1+reajusteAluguel)^floor((t−1)/12)`.
 - Fundo de reserva devolvido no fim se `devolveFundoReserva` (valor = FR pago, nominal).
-- **Custo efetivo** (a.a.) = TIR de `[−parcelas 1..k, +creditoDisponivel − caixaLance no mês k, −parcelas depois]`
+- **Custo efetivo** (a.a.) = TIR de `[−parcelas 1..k, +creditoDisponivel − sobra + sobraEmEspécie − caixaLance no mês k, −parcelas depois]`
+  (a sobra que abate o saldo já aparece nas parcelas menores; contá-la também como entrada seria dupla contagem)
   (não inclui aluguel nem complemento). Exibir também em real: `(1+cet)/(1+ipca) − 1`.
   **O fluxo é misto** (poupa antes de k, toma emprestado depois) e pode ter 0, 1 ou 2 TIRs (medido: k=60 →
   15,4% e 36%; k=100 → nenhuma; k=150 → −30,6% e 0,6%). Por isso o resultado tem `status`:

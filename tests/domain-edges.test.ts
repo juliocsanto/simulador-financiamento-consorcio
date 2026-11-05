@@ -193,7 +193,7 @@ describe('veredito: ramos', () => {
 
   it.each([
     ['sempre-vence', { co: 0.02, j: 0.15, taxa: 0.1, pc: 60, mc: 60, pr: 240, alu: 0, va: 0.12 }, /qualquer mês de contemplação/, /último mês do grupo/],
-    ['equilibrio', { co: 0.2, j: 0.115, taxa: 0.19, pc: 120, mc: 100, pr: 360, alu: 2400, va: 0.062 }, /deixa de compensar/, /passar do mês/],
+    ['equilibrio', { co: 0.2, j: 0.115, taxa: 0.19, pc: 120, mc: 100, pr: 360, alu: 2400, va: 0.062 }, /deixa de compensar \(empata ou perde\)/, /chegar ao mês \d+ ou depois/],
     ['nunca-vence', { co: 0.2, j: 0.08, taxa: 0.3, pc: 120, mc: 24, pr: 240, alu: 2400, va: 0.12 }, /contemplação já no mês 1/, /nem com contemplação imediata/],
   ] as const)('ponto de equilíbrio %s: riscos e item oculto dizem o mesmo', (sit, params, reRisco, reOculto) => {
     const c = compare(cen(params));

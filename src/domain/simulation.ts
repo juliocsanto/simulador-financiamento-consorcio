@@ -32,6 +32,7 @@ export type CategoriaKey =
   | 'aluguel'
   | 'lanceCaixa'
   | 'complemento'
+  | 'sobraEmEspecie'
   | 'restituicao';
 
 export const CATEGORIAS: ReadonlyArray<{ key: CategoriaKey; label: string }> = [
@@ -48,6 +49,7 @@ export const CATEGORIAS: ReadonlyArray<{ key: CategoriaKey; label: string }> = [
   { key: 'aluguel', label: 'Aluguel até a contemplação' },
   { key: 'lanceCaixa', label: 'Lance em dinheiro' },
   { key: 'complemento', label: 'Complemento do próprio bolso' },
+  { key: 'sobraEmEspecie', label: 'Sobra de crédito paga em espécie (entrada de caixa)' },
   { key: 'restituicao', label: 'Restituição da cota cancelada (entrada de caixa)' },
 ];
 
@@ -277,6 +279,7 @@ export function fluxosConsorcio(sim: Simulation, con: ConsortiumResult = sim.con
     cat.aluguel[t] += r.aluguel;
     cat.lanceCaixa[t] += r.lanceCaixa;
     cat.complemento[t] += r.complemento;
+    cat.sobraEmEspecie[t] -= r.sobraEmEspecie;
     cat.itbiRegistro[t] += r.custosCompra;
     cat.tarifas[t] += r.tarifaAvaliacao;
   }

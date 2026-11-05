@@ -7,6 +7,7 @@ import {
 } from './constants';
 import { anualParaMensal, mensalParaAnual, raizesTir } from './rates';
 import type { ModoPosLance } from './types';
+import { fmtBRL } from './format';
 
 export interface ConsortiumCalcParams {
   valorCarta: number;
@@ -61,6 +62,8 @@ export interface ConsortiumRow {
   /** valor pago na quitação antecipada (já decomposto nas colunas fundoComum/adm/FR) */
   quitacao: number;
   devolucaoFundoReserva: number;
+  /** sobra de crédito além do saldo devedor, paga em espécie ao consorciado (entrada de caixa) */
+  sobraEmEspecie: number;
   desembolso: number;
   saldoDevedor: number;
   creditoCorrigido: number;
@@ -79,8 +82,17 @@ export interface Contemplacao {
   destino: 'imovel' | 'financiamento';
   complemento: number;
   sobraCredito: number;
+  /** parte da sobra que excede o saldo devedor: não tem o que abater e volta em dinheiro (Lei 11.795, art. 31) */
+  sobraEmEspecie: number;
   saldoAntes: number;
   saldoDepois: number;
+}
+
+/** Destino da sobra de crédito: abate o saldo do consórcio e, o que passar do saldo, volta em dinheiro. */
+export function textoSobraDeCredito(cp: Contemplacao): string {
+  const abatida = cp.sobraCredito - cp.sobraEmEspecie;
+  if (cp.sobraEmEspecie <= 0) return `sobram ${fmtBRL(cp.sobraCredito)} de crédito, que abatem o saldo do consórcio`;
+  return `sobram ${fmtBRL(cp.sobraCredito)} de crédito: ${abatida > 0 ? `${fmtBRL(abatida)} abatem o saldo do consórcio e ` : ''}${fmtBRL(cp.sobraEmEspecie)} voltam em dinheiro, porque não há saldo devedor para abater`;
 }
 
 export interface ConsortiumTotals {
@@ -96,6 +108,7 @@ export interface ConsortiumTotals {
   tarifaAvaliacao: number;
   quitacao: number;
   devolucaoFundoReserva: number;
+  sobraEmEspecie: number;
   desembolso: number;
 }
 
@@ -218,7 +231,9 @@ function calcularContemplacao(
     : precoImovelNoMes(p.valorImovel, p.valorizacaoImovelAa, mes - mesesJaPagos);
   const complemento = Math.max(0, precoImovel - creditoDisponivel);
   const sobraCredito = Math.max(0, creditoDisponivel - precoImovel);
-  saldoDepois -= Math.min(sobraCredito, saldoDepois);
+  const sobraAbatida = Math.min(sobraCredito, saldoDepois);
+  saldoDepois -= sobraAbatida;
+  const sobraEmEspecie = sobraCredito - sobraAbatida;
   return {
     mes,
     creditoCorrigido: credito,
@@ -231,6 +246,7 @@ function calcularContemplacao(
     destino,
     complemento,
     sobraCredito,
+    sobraEmEspecie,
     saldoAntes: saldo,
     saldoDepois,
   };
@@ -280,6 +296,7 @@ export function simulateConsortium(p: ConsortiumCalcParams): ConsortiumResult {
     let custosCompra = 0;
     let tarifaAvaliacao = 0;
     let creditoRecebidoLiquido = 0;
+    let sobraEmEspecie = 0;
     if (mes === k) {
       contemplacao = calcularContemplacao(p, mes, credito, saldo, m);
       saldo = contemplacao.saldoDepois;
@@ -287,7 +304,10 @@ export function simulateConsortium(p: ConsortiumCalcParams): ConsortiumResult {
       complemento = contemplacao.complemento;
       custosCompra = p.saldosFinanciamentoAQuitar ? 0 : (p.itbiPct + p.registroPct) * contemplacao.precoImovel;
       tarifaAvaliacao = p.tarifaAvaliacaoConsorcio;
-      creditoRecebidoLiquido = contemplacao.creditoDisponivel - lanceCaixa;
+      sobraEmEspecie = contemplacao.sobraEmEspecie;
+      // A sobra que abate o saldo não chega ao bolso (já reduz as parcelas seguintes): só a parte em espécie é entrada de caixa.
+      creditoRecebidoLiquido =
+        contemplacao.creditoDisponivel - contemplacao.sobraCredito + contemplacao.sobraEmEspecie - lanceCaixa;
       contemplado = true;
       // Com redutor, depois da contemplação a parcela volta ao mínimo da parcela cheia ou do saldo remanescente.
       parcelaFixa =
@@ -322,6 +342,7 @@ export function simulateConsortium(p: ConsortiumCalcParams): ConsortiumResult {
       tarifaAvaliacao,
       quitacao,
       devolucaoFundoReserva,
+      sobraEmEspecie,
       desembolso: 0,
       saldoDevedor: saldo,
       creditoCorrigido: credito,
@@ -349,7 +370,8 @@ export function simulateConsortium(p: ConsortiumCalcParams): ConsortiumResult {
       r.complemento +
       r.custosCompra +
       r.tarifaAvaliacao -
-      r.devolucaoFundoReserva;
+      r.devolucaoFundoReserva -
+      r.sobraEmEspecie;
   }
 
   const futuras = rows.filter((row) => row.mes > m);
@@ -377,6 +399,7 @@ function somarConsorcio(rows: readonly ConsortiumRow[]): ConsortiumTotals {
     tarifaAvaliacao: 0,
     quitacao: 0,
     devolucaoFundoReserva: 0,
+    sobraEmEspecie: 0,
     desembolso: 0,
   };
   for (const r of rows) {
@@ -392,6 +415,7 @@ function somarConsorcio(rows: readonly ConsortiumRow[]): ConsortiumTotals {
     t.tarifaAvaliacao += r.tarifaAvaliacao;
     t.quitacao += r.quitacao;
     t.devolucaoFundoReserva += r.devolucaoFundoReserva;
+    t.sobraEmEspecie += r.sobraEmEspecie;
     t.desembolso += r.desembolso;
   }
   return t;
