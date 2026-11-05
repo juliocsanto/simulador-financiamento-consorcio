@@ -8,7 +8,7 @@ import {
 import { simulateConsortium } from './consortium';
 import { simulateFinancing, type FinancingCalcParams, type FinancingResult } from './financing';
 import { anualParaMensal, valorPresente } from './rates';
-import { consortiumParams, serieTotalConsorcio, type Simulation } from './simulation';
+import { serieTotalConsorcio, somar, type Simulation } from './simulation';
 
 /** VP (a custo de oportunidade) apenas das parcelas do financiamento, mês 1 em diante. */
 function vpFinanciamento(result: FinancingResult, coAa: number): number {
@@ -129,12 +129,12 @@ function usoFgts(sim: Simulation, baselineJuros: number, baselineMeses: number):
   const { fgtsSaldo, fgtsAporteMensal } = sim.input.financiamento;
   if (fgtsSaldo <= 0 && fgtsAporteMensal <= 0) return null;
   const extras: Record<number, number> = {};
-  const prazo = sim.paramsFin.prazoMeses;
+  const prazo = sim.paramsFinHoje.prazoMeses;
   for (let mes = MESES_ENTRE_USOS_FGTS; mes <= prazo; mes += MESES_ENTRE_USOS_FGTS) {
     extras[mes] = fgtsAporteMensal * MESES_ENTRE_USOS_FGTS + (mes === MESES_ENTRE_USOS_FGTS ? fgtsSaldo : 0);
   }
   const result = simulateFinancing({
-    ...sim.paramsFin,
+    ...sim.paramsFinHoje,
     amortExtraMensal: 0,
     modoAmortExtra: 'prazo',
     extrasPontuais: extras,
@@ -152,17 +152,17 @@ function usoFgts(sim: Simulation, baselineJuros: number, baselineMeses: number):
 
 export function planoFinanciamento(sim: Simulation): PlanoFinanciamento {
   const coAa = sim.input.comum.custoOportunidadeAa;
-  const baselineSim = simulateFinancing({ ...sim.paramsFin, amortExtraMensal: 0, modoAmortExtra: 'prazo' });
-  const baseline = estrategia(sim.paramsFin, baselineSim, coAa, null, 'Seguir as parcelas até o fim', 0);
-  const estrategias = ANOS_QUITACAO_FINANCIAMENTO.filter((a) => a * MESES_POR_ANO < sim.paramsFin.prazoMeses).map(
+  const baselineSim = simulateFinancing({ ...sim.paramsFinHoje, amortExtraMensal: 0, modoAmortExtra: 'prazo' });
+  const baseline = estrategia(sim.paramsFinHoje, baselineSim, coAa, null, 'Seguir as parcelas até o fim', 0);
+  const estrategias = ANOS_QUITACAO_FINANCIAMENTO.filter((a) => a * MESES_POR_ANO < sim.paramsFinHoje.prazoMeses).map(
     (anos) =>
       estrategia(
-        sim.paramsFin,
+        sim.paramsFinHoje,
         baselineSim,
         coAa,
         anos,
         `Quitar em ${anos} anos`,
-        extraNecessarioParaQuitar(sim.paramsFin, anos),
+        extraNecessarioParaQuitar(sim.paramsFinHoje, anos),
       ),
   );
   const cet = sim.finCet;
@@ -206,21 +206,26 @@ export function planoConsorcio(sim: Simulation): PlanoConsorcio {
   const { custoOportunidadeAa: coAa, ipcaAa } = sim.input.comum;
   const taxa = anualParaMensal(coAa);
   const vpDe = (serie: number[]): number => valorPresente(serie, taxa);
-  const baselineVP = vpDe(serieTotalConsorcio(sim.con));
+  const baselineSerie = serieTotalConsorcio(sim);
+  const baselineVP = vpDe(baselineSerie);
+  const baselineNominal = somar(baselineSerie);
   const mesContemplacao = sim.con.contemplacao.mes;
   const quitacoes: QuitacaoConsorcio[] = [];
   for (const anos of ANOS_QUITACAO_CONSORCIO) {
-    const mes = anos * MESES_POR_ANO;
+    // os anos contam a partir de HOJE; com parcelas já pagas o mês do contrato é deslocado (e nunca cai antes de m+1)
+    const mes = sim.parcelasPagasConsorcio + anos * MESES_POR_ANO;
     if (mes >= sim.paramsCon.prazoMeses || mes <= mesContemplacao) continue;
-    const alt = simulateConsortium(consortiumParams(sim.input, { quitacaoAntecipadaMes: mes }));
-    const vp = vpDe(serieTotalConsorcio(alt));
+    const alt = simulateConsortium({ ...sim.paramsCon, quitacaoAntecipadaMes: mes });
+    const serieAlt = serieTotalConsorcio(sim, alt);
+    const vp = vpDe(serieAlt);
+    const totalNominal = somar(serieAlt);
     quitacoes.push({
       anos,
       mes,
       valorQuitacao: alt.totals.quitacao,
-      totalNominal: alt.totals.desembolso,
+      totalNominal,
       vp,
-      economiaNominal: sim.con.totals.desembolso - alt.totals.desembolso,
+      economiaNominal: baselineNominal - totalNominal,
       economiaVP: baselineVP - vp,
       admPaga: alt.totals.adm,
     });
@@ -228,7 +233,7 @@ export function planoConsorcio(sim: Simulation): PlanoConsorcio {
   const dividaReal = realDe(sim.paramsCon.reajusteCartaAa, ipcaAa);
   const coReal = realDe(coAa, ipcaAa);
   return {
-    baselineNominal: sim.con.totals.desembolso,
+    baselineNominal,
     baselineVP,
     baselineAdm: sim.con.totals.adm,
     quitacoes,

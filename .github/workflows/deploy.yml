@@ -27,6 +27,8 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run test:coverage   # falha o deploy se qualquer métrica de cobertura cair abaixo de 90%
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e   # UI em navegador real contra o preview; falha o deploy se quebrar
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

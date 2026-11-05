@@ -18,11 +18,12 @@ export interface ItemOculto {
 const MES_ANO_1 = 12;
 const MES_ANO_5 = 60;
 
+/** Saldo do financiamento `mes` meses a partir de HOJE (financiamento em andamento: depois das parcelas já pagas). */
 function saldoNoMes(sim: Simulation, mes: number): { mes: number; saldo: number } {
-  const rows = sim.fin.rows;
+  const rows = sim.fin.rows.slice(sim.parcelasPagasFinanciamento);
   if (rows.length === 0) return { mes: 0, saldo: 0 };
   const r = rows[Math.min(mes, rows.length) - 1];
-  return { mes: r.mes, saldo: r.saldoFinal };
+  return { mes: r.mes - sim.parcelasPagasFinanciamento, saldo: r.saldoFinal };
 }
 
 /** "o saldo caiu X%" ou, quando a TR corrige mais do que a parcela amortiza, "o saldo SUBIU X%". */
@@ -32,14 +33,20 @@ function variacaoDoSaldo(meses: number, pctAmortizado: number, saldo: number): s
 }
 
 function itensFinanciamento(sim: Simulation): ItemOculto[] {
-  const { fin, principal, input, paramsFin } = sim;
+  const { fin, input } = sim;
+  const emAndamento = sim.situacao === 'financiamento-em-andamento';
+  // financiamento em andamento: tudo a partir do saldo de hoje; o já pago não é contado de novo
+  const principal = sim.paramsFinHoje.principal;
+  const paramsFin = sim.paramsFinHoje;
+  const totais = sim.finTotals;
+  const mesesRestantes = fin.rows.length - sim.parcelasPagasFinanciamento;
   const f = input.financiamento;
   const co = input.comum.custoOportunidadeAa;
   const a12 = saldoNoMes(sim, MES_ANO_1);
   const a60 = saldoNoMes(sim, MES_ANO_5);
   const pct12 = 1 - a12.saldo / principal;
   const pct60 = 1 - a60.saldo / principal;
-  const seguros = fin.totals.mip + fin.totals.dfi + fin.totals.tarifa;
+  const seguros = totais.mip + totais.dfi + totais.tarifa;
   const cetPp = sim.finCet === null ? null : (sim.finCet - f.jurosAa) * 100;
   const ini = sim.custosIniciais;
   const foraDoFinanciamento = ini.itbiRegistro + ini.avaliacao + ini.cadastro;
@@ -47,13 +54,13 @@ function itensFinanciamento(sim: Simulation): ItemOculto[] {
   const modos = compararModosExtra(paramsFin, extraRef, co);
   const melhorModo = modos.vpPrazo <= modos.vpParcela ? 'reduzir o prazo' : 'reduzir a parcela';
 
-  return [
+  const itens: ItemOculto[] = [
     {
       id: 'fin-saldo-nao-cai',
       lado: 'financiamento',
       titulo: 'O saldo devedor demora a cair',
       texto:
-        `No ${f.sistema}, partindo de ${fmtBRL(principal)}, ${variacaoDoSaldo(a12.mes, pct12, a12.saldo)} e ` +
+        `No ${f.sistema}, partindo de ${fmtBRL(principal)}${emAndamento ? ' (saldo devedor de hoje)' : ''}, ${variacaoDoSaldo(a12.mes, pct12, a12.saldo)} e ` +
         `${variacaoDoSaldo(a60.mes, pct60, a60.saldo)}. ` +
         (pct12 < 0 || pct60 < 0
           ? 'Você paga em dia e ainda deve mais do que pegou: a TR corrige o saldo todo mês por mais do que a parcela amortiza, porque no começo a parcela é quase só juros.'
@@ -64,15 +71,15 @@ function itensFinanciamento(sim: Simulation): ItemOculto[] {
       id: 'fin-tr',
       lado: 'financiamento',
       titulo: 'A TR corrige o saldo todo mês',
-      texto: `Com TR de ${fmtPct(f.trAm, 2)} ao mês, ${fmtBRL(fin.totals.correcao)} são somados ao saldo devedor ao longo do contrato, além dos juros.`,
-      valor: fin.totals.correcao,
+      texto: `Com TR de ${fmtPct(f.trAm, 2)} ao mês, ${fmtBRL(totais.correcao)} são somados ao saldo devedor ${emAndamento ? 'daqui para frente' : 'ao longo do contrato'}, além dos juros.`,
+      valor: totais.correcao,
     },
     {
       id: 'fin-juros-total',
       lado: 'financiamento',
       titulo: 'Juros totais do contrato',
-      texto: `Em ${fmtMeses(fin.rows.length)} você paga ${fmtBRL(fin.totals.juros)} de juros sobre ${fmtBRL(principal)} financiados: ${fmtX(fin.totals.juros / principal)} o valor emprestado (total pago ao banco: ${fmtBRL(fin.totals.desembolso)}).`,
-      valor: fin.totals.juros / principal,
+      texto: `Em ${fmtMeses(mesesRestantes)} você paga ${fmtBRL(totais.juros)} de juros sobre ${fmtBRL(principal)} ${emAndamento ? 'de saldo devedor' : 'financiados'}: ${fmtX(totais.juros / principal)} o valor ${emAndamento ? 'que falta pagar' : 'emprestado'} (total pago ao banco: ${fmtBRL(totais.desembolso)}).`,
+      valor: totais.juros / principal,
     },
     {
       id: 'fin-seguros',
@@ -113,6 +120,8 @@ function itensFinanciamento(sim: Simulation): ItemOculto[] {
       valor: null,
     },
   ];
+  // financiamento em andamento: entrada, ITBI, avaliação e cadastro já foram pagos (custo afundado)
+  return itens.filter((item) => !(emAndamento && item.id === 'fin-custos-entrada'));
 }
 
 function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): ItemOculto[] {
@@ -120,7 +129,9 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
   const c = input.consorcio;
   const co = input.comum.custoOportunidadeAa;
   const taxa = anualParaMensal(co);
-  const primeira = con.rows[0];
+  const m = sim.parcelasPagasConsorcio;
+  const emAndamentoFin = sim.situacao === 'financiamento-em-andamento';
+  const primeira = con.rows[m];
   const ultima = con.rows[con.rows.length - 1];
   const fator = ultima.parcela / primeira.parcela;
   const cp = con.contemplacao;
@@ -139,7 +150,7 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
   const difBase = lanceRef * (cp.base - cp.creditoCorrigido);
   const embRef = c.embutidoPct > 0 ? c.embutidoPct : EMBUTIDO_TETO_TIPICO_PCT;
   const embutidoValor = c.embutidoPct > 0 ? cp.embutido : embRef * cp.base;
-  const ateContemplacao = con.rows.filter((r) => r.mes <= cp.mes);
+  const ateContemplacao = con.rows.filter((r) => r.mes > m && r.mes <= cp.mes);
   const fundoComumPago = ateContemplacao.reduce((s, r) => s + r.fundoComum, 0);
   const totalPagoAteAgora = ateContemplacao.reduce((s, r) => s + r.parcela, 0);
 
@@ -155,21 +166,23 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
       id: 'con-adm-integral',
       lado: 'consorcio',
       titulo: 'Taxa de administração paga integralmente',
-      texto: `Você paga ${fmtBRL(con.totals.adm)} de taxa de administração. Ela não é descontada se você quitar antes: antecipar economiza só os reajustes futuros.`,
+      texto: `Você paga${m > 0 ? ' daqui para frente' : ''} ${fmtBRL(con.totals.adm)} de taxa de administração. Ela não é descontada se você quitar antes: antecipar economiza só os reajustes futuros.`,
       valor: con.totals.adm,
     },
     {
       id: 'con-fundo-reserva',
       lado: 'consorcio',
       titulo: 'Fundo de reserva só volta no fim do grupo',
-      texto: `Você paga ${fmtBRL(con.totals.fundoReserva)} de fundo de reserva; ${c.devolveFundoReserva ? 'neste cenário ele é devolvido no encerramento (e só se sobrar)' : 'neste cenário conservador ele não é devolvido'}, e nunca antes do fim do grupo.`,
+      texto: `Você paga${m > 0 ? ' daqui para frente' : ''} ${fmtBRL(con.totals.fundoReserva)} de fundo de reserva; ${c.devolveFundoReserva ? 'neste cenário ele é devolvido no encerramento (e só se sobrar)' : 'neste cenário conservador ele não é devolvido'}, e nunca antes do fim do grupo.`,
       valor: con.totals.fundoReserva,
     },
     {
       id: 'con-sem-data',
       lado: 'consorcio',
       titulo: 'Contemplação não tem data',
-      texto: `Até a contemplação no mês ${cp.mes} você paga aluguel: ${fmtBRL(aluguelNominal)} nominais (${fmtBRL(aluguelVP)} em valor presente). ${textoEq}`,
+      texto: emAndamentoFin
+        ? `Você já mora no imóvel, então não há aluguel. Até a contemplação (mês ${cp.mes}) você paga o financiamento e o consórcio ao mesmo tempo. ${textoEq}`
+        : `Até a contemplação no mês ${cp.mes - m}${m > 0 ? ' (contando a partir de hoje)' : ''} você paga aluguel: ${fmtBRL(aluguelNominal)} nominais (${fmtBRL(aluguelVP)} em valor presente). ${textoEq}`,
       valor: aluguelVP,
     },
     {
@@ -186,7 +199,9 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
       id: 'con-complemento',
       lado: 'consorcio',
       titulo: 'O crédito pode não comprar o imóvel',
-      texto: `Na contemplação (mês ${cp.mes}) o imóvel custa ${fmtBRL(cp.precoImovel)} e o crédito disponível é ${fmtBRL(cp.creditoDisponivel)}: ${cp.complemento > 0 ? `você completa ${fmtBRL(cp.complemento)} do próprio bolso` : `sobram ${fmtBRL(cp.sobraCredito)} de crédito`}. O imóvel valoriza ${fmtPct(input.comum.valorizacaoImovelAa)} a.a. e a carta é reajustada ${fmtPct(c.reajusteCartaAa)} a.a.`,
+      texto: emAndamentoFin
+        ? `Na contemplação (mês ${cp.mes}) o saldo devedor do financiamento é ${fmtBRL(cp.precoImovel)} e o crédito disponível é ${fmtBRL(cp.creditoDisponivel)}: ${cp.complemento > 0 ? `você completa ${fmtBRL(cp.complemento)} do próprio bolso para quitar` : `sobram ${fmtBRL(cp.sobraCredito)} de crédito, que abatem o saldo do consórcio`}. A carta é reajustada ${fmtPct(c.reajusteCartaAa)} a.a.`
+        : `Na contemplação (mês ${cp.mes}) o imóvel custa ${fmtBRL(cp.precoImovel)} e o crédito disponível é ${fmtBRL(cp.creditoDisponivel)}: ${cp.complemento > 0 ? `você completa ${fmtBRL(cp.complemento)} do próprio bolso` : `sobram ${fmtBRL(cp.sobraCredito)} de crédito`}. O imóvel valoriza ${fmtPct(input.comum.valorizacaoImovelAa)} a.a. e a carta é reajustada ${fmtPct(c.reajusteCartaAa)} a.a.`,
       valor: cp.complemento,
     },
     {
@@ -200,8 +215,10 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
       id: 'con-desistencia',
       lado: 'consorcio',
       titulo: 'Desistência devolve só o fundo comum, no fim do grupo',
-      texto: `Se desistisse na contemplação (mês ${cp.mes}), dos ${fmtBRL(totalPagoAteAgora)} pagos em parcelas só o fundo comum (${fmtBRL(fundoComumPago)}) voltaria, ao término do grupo (STJ Tema 312). Risco de liquidez.`,
-      valor: fundoComumPago,
+      texto: sim.restituicao
+        ? `Se desistisse hoje, só ${fmtPct(sim.restituicao.pctAmortizado)} do bem pago ao fundo comum voltaria, menos multa de ${fmtPct(sim.restituicao.multaPct)}: ${fmtBRL(sim.restituicao.valor)}, recebidos no mês ${sim.restituicao.t} a partir de hoje (STJ Tema 312). Risco de liquidez.`
+        : `Se desistisse na contemplação (mês ${cp.mes}), dos ${fmtBRL(totalPagoAteAgora)} pagos em parcelas só o fundo comum (${fmtBRL(fundoComumPago)}) voltaria, ao término do grupo (STJ Tema 312). Risco de liquidez.`,
+      valor: sim.restituicao ? sim.restituicao.valor : fundoComumPago,
     },
     {
       id: 'con-exigencias',

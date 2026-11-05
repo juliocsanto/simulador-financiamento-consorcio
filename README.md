@@ -14,6 +14,10 @@ consórcio de imóvel, e diz qual custa menos, por quê, com que riscos, e como 
 - Mostra o **plano de quitação** de cada dívida (extra necessário, fundo de quitação, FGTS, quitação antecipada do consórcio).
 - Lista "**o que não te contam**": 8 itens do financiamento e 10 do consórcio, cada um com o número do seu cenário.
 - Salva cenários no próprio navegador (IndexedDB via Dexie).
+- Aceita **contrato em andamento** (campo "Situação atual"): nova compra, **consórcio em andamento** (cota não contemplada, com
+  restituição se for cancelada) ou **financiamento em andamento** (consórcio para quitar o saldo devedor). O que já foi pago é
+  custo afundado: aparece como "Já pago", mas fica fora dos totais e do veredito. Também modela o **redutor de parcela** do
+  consórcio (art. 22.6 do regulamento Porto). Detalhes na SPEC, seção 4b.
 
 ## As duas réguas
 

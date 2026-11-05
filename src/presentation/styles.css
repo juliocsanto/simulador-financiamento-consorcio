@@ -400,3 +400,18 @@ details > summary {
     font-size: 1.3rem;
   }
 }
+
+/* contrato em andamento: meses já pagos (custo afundado) ficam esmaecidos no cronograma */
+tr.pago {
+  opacity: 0.6;
+  font-style: italic;
+}
+.andamento {
+  background: var(--cor-destaque);
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  margin: 0.5rem 0 0.9rem;
+}
+.andamento p {
+  margin: 0.35rem 0;
+}

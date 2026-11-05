@@ -30,6 +30,7 @@ Comuns:
 | registroPct | 0,6% | calculify.app (registro ~R$3.000 em R$500K) |
 | aluguelMensal | 0,4% do imóvel (2.400) | — (parâmetro do usuário) |
 | reajusteAluguelAa | 4,6% | — |
+| situacaoAtual | `nova-compra` \| `consorcio-em-andamento` \| `financiamento-em-andamento` (padrão `nova-compra`) | §4b: o que já foi pago é custo afundado |
 
 Financiamento:
 | campo | padrão | fonte |
@@ -46,6 +47,7 @@ Financiamento:
 | tarifaCadastro | 1.000 | calculify.app (R$500–1.500) |
 | amortExtraMensal | 0 | — |
 | modoAmortExtra | 'prazo' \| 'parcela' | — |
+| parcelasPagas (m) | 0 | §4b: parcelas já pagas do financiamento; só vale em `financiamento-em-andamento` |
 
 Consórcio:
 | campo | padrão | fonte |
@@ -63,6 +65,8 @@ Consórcio:
 | modoPosLance | 'parcela' \| 'prazo' | — |
 | tarifaAvaliacaoConsorcio | 2.000 | — |
 | devolveFundoReserva | false | conservador |
+| redutorParcelaPct (r) | 0 | §4b: regulamento Porto art. 22.6; vale em qualquer situação |
+| parcelasPagas (m) | 0 | §4b: parcelas já pagas da cota não contemplada; só vale em `consorcio-em-andamento` |
 
 ## 3. Fórmulas — Financiamento
 
@@ -100,6 +104,62 @@ Consórcio:
   15,4% e 36%; k=100 → nenhuma; k=150 → −30,6% e 0,6%). Por isso o resultado tem `status`:
   `ok` só com raiz única na faixa −50%..100% a.a. **e** fluxo com forma de empréstimo (mais pago depois de k
   do que antes); senão `fluxo-misto` ou `sem-raiz`, taxa `n/d`, e o veredito se apoia só no VP.
+
+
+## 4b. Contrato em andamento e redutor de parcela (pedido do usuário, 05/11/2026)
+
+A comparação original supõe que a pessoa ainda não assinou nada. Quem já paga um consórcio ou um
+financiamento decide **a partir de hoje**: o que já foi pago é igual nas duas escolhas e não pode pesar no
+veredito. Campo `comum.situacaoAtual`:
+
+| valor | significado |
+|---|---|
+| `nova-compra` (padrão) | nada contratado; comportamento das §3–§5 |
+| `consorcio-em-andamento` | já paga `consorcio.parcelasPagas = m` parcelas de uma cota **não contemplada** |
+| `financiamento-em-andamento` | já paga `financiamento.parcelasPagas = m` parcelas; o imóvel já é seu |
+
+Fora de escopo (documentado na UI): consórcio **e** financiamento em andamento ao mesmo tempo.
+
+### Regra comum: t = 0 é hoje
+- O contrato em andamento é simulado desde o mês 1 do contrato; os meses `≤ m` são **já pagos (custo
+  afundado)**: aparecem no detalhamento e no total "já pago", **não entram** em nominal, VP nem real.
+- Fluxo do mês de contrato `mes > m` vai para `t = mes − m`. Aluguel, preço do imóvel e desconto contam a
+  partir de hoje (`t`), não do início do contrato.
+
+### Redutor de parcela (regulamento Porto art. 22.6) — vale em qualquer situação
+- `consorcio.redutorParcelaPct = r` (padrão 0). Antes da contemplação a parcela-base é
+  `(1 − r)·C_t·(1+adm+FR)/prazo` (a parcela cheia, como % do crédito corrigido, reduzida). A diferença
+  **fica no saldo** e continua sendo reajustada.
+- Após a contemplação a parcela é **recalculada sobre o saldo**: modo 'parcela' → `SD/(prazo − k)`;
+  modo 'prazo' → `max(parcela cheia do mês k, SD/(prazo − k))` (com r = 0 vale a regra da §4 sem mudança).
+  Consequência que a UI mostra: a parcela pós-contemplação **sobe** em relação à reduzida.
+
+### `consorcio-em-andamento` (m parcelas pagas)
+- `valorCarta` é o crédito **na adesão**; o reajuste anual segue os aniversários do contrato (13, 25…).
+- Contemplação `k` é mês de contrato e é normalizada para `k ≥ m + 1` (a cota ainda não foi contemplada).
+  O imóvel é comprado ao preço `V0·(1+valoriz)^((k − m)/12)`; aluguel pago em `t = 1..k − m`.
+- **Opção consórcio** = seguir com a cota: fluxos dos meses `m+1..prazo`.
+- **Opção financiamento** = financiar hoje (entrada, ITBI/registro, tarifas em t=0, como na §3) **e cancelar a
+  cota**. A cota cancelada devolve (art. 11.1.1 / art. 10):
+  - `pctAmortizado = Σ_{mes ≤ m} fundoComum_mes / C_mes` (percentual do bem pago ao fundo comum);
+  - `multa = 10%` se `pctAmortizado ≤ 50%`, `5%` se `≤ 80%`, `0%` acima;
+  - `restituição = pctAmortizado·C_prazo·(1 − multa)`, com `C_prazo` o crédito corrigido até o fim do grupo,
+    recebida em `t = prazo − m + 2` (60 dias após a última AGO; STJ Tema 312) como **entrada** de caixa.
+  - Taxa de adm e fundo de reserva já pagos não voltam. Vender/transferir a cota é alternativa citada nos
+    riscos, não modelada.
+- Mês de equilíbrio: varredura `k = m+1..prazo`.
+
+### `financiamento-em-andamento` (m parcelas pagas)
+- Os campos do financiamento descrevem o **contrato original** (valor do imóvel e entrada da contratação);
+  a UI mostra o saldo devedor de hoje para conferir com o extrato.
+- **Opção financiamento** = continuar pagando: meses `m+1..prazo`, sem entrada, ITBI ou aluguel.
+- **Opção consórcio** = aderir hoje a um consórcio para quitar o financiamento ("quitação de financiamento
+  próprio", uso de crédito previsto no regulamento). Até a contemplação (`t = 1..k`) paga as duas coisas.
+  No mês `k`: o crédito disponível `C_k − E` quita o saldo devedor do financiamento após a parcela `m + k`;
+  faltando, o **complemento** sai do bolso; sobrando, a sobra abate o saldo do consórcio. Sem ITBI, registro
+  nem aluguel; a tarifa de avaliação do consórcio continua.
+- As parcelas do financiamento pagas na espera entram nas categorias do financiamento (juros, amortização,
+  correção, MIP, DFI, tarifas) dentro do custo da opção consórcio.
 
 ## 5. Comparação e veredito
 

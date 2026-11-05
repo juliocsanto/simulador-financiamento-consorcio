@@ -1,6 +1,7 @@
 import { compare, type Comparison } from '../domain/comparison';
 import { buildHiddenCosts, type ItemOculto } from '../domain/hiddenCosts';
 import { buildPayoffPlan, type PlanoQuitacao } from '../domain/payoff';
+import { completarInput } from '../domain/normalize';
 import type { ScenarioInput } from '../domain/types';
 import type { SavedScenario, ScenarioRepository } from './ports';
 
@@ -48,5 +49,6 @@ export async function deleteScenario(repo: ScenarioRepository, id: number): Prom
 
 export async function loadScenario(repo: ScenarioRepository, id: number): Promise<ScenarioInput | undefined> {
   const found = await repo.get(id);
-  return found ? structuredClone(found.input) : undefined;
+  // cenários salvos antes dos campos de contrato em andamento são completados com os padrões
+  return found ? completarInput(structuredClone(found.input)) : undefined;
 }

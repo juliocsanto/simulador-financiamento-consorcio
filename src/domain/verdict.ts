@@ -8,7 +8,6 @@ import { simulateConsortium } from './consortium';
 import { fmtBRL, fmtMeses, fmtPct } from './format';
 import { anualParaMensal, valorPresente } from './rates';
 import {
-  consortiumParams,
   serieTotalConsorcio,
   serieTotalFinanciamento,
   somar,
@@ -76,15 +75,18 @@ function calcularEquilibrio(sim: Simulation, vpFin: number): PontoEquilibrio {
   const limiar = limiarEmpate(sim.input.comum.valorImovel);
   const co = sim.input.comum.custoOportunidadeAa;
   const prazo = sim.input.consorcio.prazoMeses;
+  // Cota em andamento: a contemplação só pode ocorrer depois das parcelas já pagas.
+  const primeiro = sim.parcelasPagasConsorcio + 1;
   const venceEm = (k: number): boolean => {
-    const con = simulateConsortium(consortiumParams(sim.input, { mesContemplacao: k }));
-    return vpFin - vpDe(serieTotalConsorcio(con), co) > limiar;
+    // mesma função de fluxos da comparação principal: a varredura nunca contradiz o veredito
+    const con = simulateConsortium({ ...sim.paramsCon, mesContemplacao: k, ignorarCustoEfetivo: true });
+    return vpFin - vpDe(serieTotalConsorcio(sim, con), co) > limiar;
   };
-  for (let k = 1; k <= prazo; k++) {
+  for (let k = primeiro; k <= prazo; k++) {
     if (venceEm(k)) continue;
-    if (k > 1) return { situacao: 'equilibrio', mes: k };
-    // Perde no mês 1. O VP não é monotônico em k, então "nunca vence" só vale se nenhum k vencer.
-    for (let j = 2; j <= prazo; j++) {
+    if (k > primeiro) return { situacao: 'equilibrio', mes: k };
+    // Perde no primeiro mês possível. O VP não é monotônico em k, então "nunca vence" só vale se nenhum k vencer.
+    for (let j = primeiro + 1; j <= prazo; j++) {
       if (venceEm(j)) return { situacao: 'vence-tarde', mes: j };
     }
     return { situacao: 'nunca-vence', mes: null };
@@ -93,7 +95,7 @@ function calcularEquilibrio(sim: Simulation, vpFin: number): PontoEquilibrio {
 }
 
 function cenarioCo(sim: Simulation, coAa: number): CenarioSensibilidade {
-  const diff = vpDe(serieTotalFinanciamento(sim), coAa) - vpDe(serieTotalConsorcio(sim.con), coAa);
+  const diff = vpDe(serieTotalFinanciamento(sim), coAa) - vpDe(serieTotalConsorcio(sim), coAa);
   return { custoOportunidadeAa: coAa, vencedor: decidirVencedor(diff, sim.input.comum.valorImovel), diffPV: diff };
 }
 
@@ -121,6 +123,49 @@ function razaoCet(sim: Simulation): Razao {
   };
 }
 
+/** Financiamento em andamento: até a contemplação o usuário paga o financiamento E o consórcio. */
+function razaoFinanciamentoEmParalelo(sim: Simulation): Razao {
+  const pagas = sim.parcelasPagasFinanciamento;
+  const espera = sim.fin.rows.slice(pagas, pagas + sim.con.contemplacao.mes);
+  const taxa = anualParaMensal(sim.input.comum.custoOportunidadeAa);
+  const nominal = espera.reduce((s, r) => s + r.desembolso, 0);
+  const vp = espera.reduce((s, r, i) => s + r.desembolso / (1 + taxa) ** (i + 1), 0);
+  return {
+    titulo: 'Financiamento pago em paralelo',
+    texto: `Se aderir ao consórcio você continua pagando o financiamento até a contemplação (mês ${sim.con.contemplacao.mes}): ${fmtBRL(nominal)} nominais, ${fmtBRL(vp)} em valor presente, além das parcelas do consórcio. Você já mora no imóvel: não há aluguel nas duas opções.`,
+    favorece: 'financiamento',
+  };
+}
+
+/** Em contrato em andamento: o já pago é igual nas duas escolhas e fica fora da conta. */
+function razaoCustoAfundado(sim: Simulation): Razao | null {
+  if (sim.situacao === 'nova-compra' || sim.parcelasPagas === 0) return null;
+  const ehConsorcio = sim.situacao === 'consorcio-em-andamento';
+  const valor = ehConsorcio ? sim.jaPago.consorcio : sim.jaPago.financiamento;
+  return {
+    titulo: 'Já pago (custo afundado)',
+    texto: `Você já pagou ${fmtBRL(valor)} em ${sim.parcelasPagas} parcelas do ${ehConsorcio ? 'consórcio' : 'financiamento'}. Esse valor não entra na comparação porque é igual nas duas escolhas: a decisão vale só para o que ainda está por vir.`,
+    favorece: 'neutro',
+  };
+}
+
+/** Redutor de parcela: a parcela de antes da contemplação é menor e sobe depois. */
+function razaoRedutor(sim: Simulation): Razao | null {
+  const r = sim.input.consorcio.redutorParcelaPct;
+  if (r <= 0) return null;
+  const k = sim.con.contemplacao.mes;
+  const antes = sim.con.rows[Math.min(sim.parcelasPagasConsorcio, sim.con.rows.length - 1)];
+  const depois = sim.con.rows[k] as (typeof sim.con.rows)[number] | undefined;
+  const textoDepois = depois
+    ? `Depois da contemplação ela passa a ${fmtBRL(depois.parcela)}`
+    : 'A contemplação ocorre na última parcela, que quita todo o saldo';
+  return {
+    titulo: 'Redutor de parcela',
+    texto: `Com redutor de ${fmtPct(r)}, a parcela antes da contemplação é ${fmtBRL(antes.parcela)}. ${textoDepois}: a diferença que você não pagou ficou no saldo devedor e continua sendo reajustada.`,
+    favorece: 'neutro',
+  };
+}
+
 function razoes(
   sim: Simulation,
   fluxosFin: Fluxos,
@@ -133,25 +178,31 @@ function razoes(
   const co = sim.input.comum.custoOportunidadeAa;
   const lista: Razao[] = [razaoCet(sim)];
 
-  const aluguelNominal = somar(fluxosCon.porCategoria.aluguel);
-  const aluguelVP = vpDe(fluxosCon.porCategoria.aluguel, co);
-  lista.push({
-    titulo: 'Aluguel durante a espera',
-    texto: `No consórcio você paga aluguel até o mês ${sim.con.contemplacao.mes}: ${fmtBRL(aluguelNominal)} nominais, ${fmtBRL(aluguelVP)} em valor presente. No financiamento você já mora no imóvel.`,
-    favorece: aluguelVP > 0 ? 'financiamento' : 'neutro',
-  });
+  if (sim.situacao === 'financiamento-em-andamento') {
+    lista.push(razaoFinanciamentoEmParalelo(sim));
+  } else {
+    const aluguelNominal = somar(fluxosCon.porCategoria.aluguel);
+    const aluguelVP = vpDe(fluxosCon.porCategoria.aluguel, co);
+    lista.push({
+      titulo: 'Aluguel durante a espera',
+      texto: `No consórcio você paga aluguel até o mês ${sim.con.contemplacao.mes - sim.parcelasPagasConsorcio}${sim.parcelasPagasConsorcio > 0 ? ' (contando a partir de hoje)' : ''}: ${fmtBRL(aluguelNominal)} nominais, ${fmtBRL(aluguelVP)} em valor presente. No financiamento você já mora no imóvel.`,
+      favorece: aluguelVP > 0 ? 'financiamento' : 'neutro',
+    });
+  }
 
   const admTotal = sim.con.totals.adm;
+  const daquiCon = sim.situacao === 'consorcio-em-andamento' ? ' daqui para frente' : '';
+  const daquiFin = sim.situacao === 'financiamento-em-andamento' ? ' daqui para frente' : '';
   lista.push({
     titulo: 'Taxa de administração',
-    texto: `O consórcio cobra ${fmtBRL(admTotal)} de taxa de administração (${fmtPct(sim.input.consorcio.taxaAdmPct)} da carta, corrigidos pelo reajuste), paga mesmo se você quitar antes.`,
+    texto: `O consórcio cobra${daquiCon} ${fmtBRL(admTotal)} de taxa de administração (${fmtPct(sim.input.consorcio.taxaAdmPct)} da carta, corrigidos pelo reajuste), paga mesmo se você quitar antes.`,
     favorece: 'financiamento',
   });
 
-  const jurosTotal = sim.fin.totals.juros;
+  const jurosTotal = sim.finTotals.juros;
   lista.push({
     titulo: 'Juros do financiamento',
-    texto: `O financiamento paga ${fmtBRL(jurosTotal)} de juros (mais ${fmtBRL(sim.fin.totals.correcao)} de correção pela TR) em ${fmtMeses(sim.fin.rows.length)}.`,
+    texto: `O financiamento paga${daquiFin} ${fmtBRL(jurosTotal)} de juros (mais ${fmtBRL(sim.finTotals.correcao)} de correção pela TR) em ${fmtMeses(sim.fin.rows.length - sim.parcelasPagasFinanciamento)}.`,
     favorece: 'consorcio',
   });
 
@@ -171,7 +222,31 @@ function razoes(
       favorece: vencedor === 'empate' ? 'neutro' : vencedor,
     });
   }
+  const afundado = razaoCustoAfundado(sim);
+  if (afundado) lista.push(afundado);
+  const redutor = razaoRedutor(sim);
+  if (redutor) lista.push(redutor);
   return lista;
+}
+
+function riscosDeContratoEmAndamento(sim: Simulation): string[] {
+  const rest = sim.restituicao;
+  if (rest) {
+    return [
+      `Financiar significa cancelar a cota: a restituição estimada é ${fmtBRL(rest.valor)} (${fmtPct(rest.pctAmortizado)} do bem já pago ao fundo comum, menos multa de ${fmtPct(rest.multaPct)}), recebida só no mês ${rest.t} a partir de hoje, cerca de 60 dias depois da última assembleia do grupo (STJ Tema 312). Taxa de administração e fundo de reserva já pagos não voltam. Vender ou transferir a cota é uma alternativa que esta simulação não modela.`,
+    ];
+  }
+  if (sim.situacao === 'financiamento-em-andamento') {
+    const cp = sim.con.contemplacao;
+    const cobertura =
+      cp.complemento > 0
+        ? `O crédito disponível (${fmtBRL(cp.creditoDisponivel)}) NÃO cobre o saldo devedor do financiamento (${fmtBRL(cp.precoImovel)}): faltam ${fmtBRL(cp.complemento)} do próprio bolso.`
+        : `O crédito disponível (${fmtBRL(cp.creditoDisponivel)}) cobre o saldo devedor do financiamento (${fmtBRL(cp.precoImovel)}) e sobram ${fmtBRL(cp.sobraCredito)}, que abatem o saldo do consórcio.`;
+    return [
+      `Quitar o financiamento com o consórcio, na contemplação (mês ${cp.mes}): ${cobertura} A administradora precisa aceitar a quitação de financiamento próprio e exigirá garantia.`,
+    ];
+  }
+  return [];
 }
 
 function riscos(sim: Simulation, sens: Sensibilidade): string[] {
@@ -188,8 +263,10 @@ function riscos(sim: Simulation, sens: Sensibilidade): string[] {
   } else if (eq.situacao === 'sempre-vence') {
     out.push('O consórcio vence em qualquer mês de contemplação possível neste cenário (o prazo total do grupo é o limite).');
   } else {
-    out.push('Mesmo com contemplação já no mês 1 o consórcio não vence neste cenário.');
+    const primeiro = sim.parcelasPagasConsorcio + 1;
+    out.push(`Mesmo com contemplação já no mês ${primeiro}${primeiro > 1 ? ' do contrato (o primeiro possível)' : ''} o consórcio não vence neste cenário.`);
   }
+  out.push(...riscosDeContratoEmAndamento(sim));
   const pp = SENSIBILIDADE_CO_PP * 100;
   out.push(
     `Com custo de oportunidade ${fmtPct(sens.coMais.custoOportunidadeAa)} (+${pp} p.p.) o resultado é: ${nomeOpcao(sens.coMais.vencedor)}; com ${fmtPct(sens.coMenos.custoOportunidadeAa)} (-${pp} p.p.): ${nomeOpcao(sens.coMenos.vencedor)}.`,

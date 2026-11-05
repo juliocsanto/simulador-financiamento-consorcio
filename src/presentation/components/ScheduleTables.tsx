@@ -41,8 +41,11 @@ function TabelaFinanciamento({ sim, pagina }: { sim: Simulation; pagina: number 
         </thead>
         <tbody>
           {linhas.map((r) => (
-            <tr key={r.mes}>
-              <th scope="row">{r.mes}</th>
+            <tr key={r.mes} className={r.mes <= sim.parcelasPagasFinanciamento ? 'pago' : undefined}>
+              <th scope="row">
+                {r.mes}
+                {r.mes <= sim.parcelasPagasFinanciamento ? ' (já pago)' : ''}
+              </th>
               <td className="num">{fmtBRLCents(r.saldoInicial)}</td>
               <td className="num">{fmtBRLCents(r.correcao)}</td>
               <td className="num">{fmtBRLCents(r.juros)}</td>
@@ -79,8 +82,12 @@ function TabelaConsorcio({ sim, pagina }: { sim: Simulation; pagina: number }) {
         </thead>
         <tbody>
           {linhas.map((r) => (
-            <tr key={r.mes} className={r.mes === sim.con.contemplacao.mes ? 'destaque' : undefined}>
-              <th scope="row">{r.mes}{r.mes === sim.con.contemplacao.mes ? ' (contemplação)' : ''}</th>
+            <tr key={r.mes} className={r.mes <= sim.parcelasPagasConsorcio ? 'pago' : r.mes === sim.con.contemplacao.mes ? 'destaque' : undefined}>
+              <th scope="row">
+                {r.mes}
+                {r.mes <= sim.parcelasPagasConsorcio ? ' (já pago)' : ''}
+                {r.mes === sim.con.contemplacao.mes ? ' (contemplação)' : ''}
+              </th>
               <td className="num">{fmtBRLCents(r.parcela)}</td>
               <td className="num">{fmtBRLCents(r.fundoComum)}</td>
               <td className="num">{fmtBRLCents(r.adm)}</td>

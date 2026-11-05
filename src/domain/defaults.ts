@@ -6,6 +6,7 @@ const ALUGUEL_PCT_IMOVEL = 0.004;
 export function defaultInput(): ScenarioInput {
   return {
     comum: {
+      situacaoAtual: 'nova-compra',
       valorImovel: VALOR_IMOVEL_PADRAO,
       valorizacaoImovelAa: 0.062,
       ipcaAa: 0.046,
@@ -30,6 +31,7 @@ export function defaultInput(): ScenarioInput {
       modoAmortExtra: 'prazo',
       fgtsSaldo: 0,
       fgtsAporteMensal: 0,
+      parcelasPagas: 0,
     },
     consorcio: {
       valorCarta: VALOR_IMOVEL_PADRAO,
@@ -45,6 +47,8 @@ export function defaultInput(): ScenarioInput {
       modoPosLance: 'parcela',
       tarifaAvaliacaoConsorcio: 2000,
       devolveFundoReserva: false,
+      redutorParcelaPct: 0,
+      parcelasPagas: 0,
     },
   };
 }

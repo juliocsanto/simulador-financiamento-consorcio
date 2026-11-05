@@ -116,7 +116,7 @@ export function simulateFinancing(p: FinancingCalcParams): FinancingResult {
   return { rows, totals: somarFinanciamento(rows), taxaMensal };
 }
 
-function somarFinanciamento(rows: readonly FinancingRow[]): FinancingTotals {
+export function somarFinanciamento(rows: readonly FinancingRow[]): FinancingTotals {
   const zero: FinancingTotals = {
     juros: 0,
     amortizacao: 0,
