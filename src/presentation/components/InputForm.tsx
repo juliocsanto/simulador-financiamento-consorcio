@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { ScenarioInput } from '../../domain/types';
+import type { ScenarioInput, SituacaoAtual } from '../../domain/types';
 
 type Grupo = 'comum' | 'financiamento' | 'consorcio';
 type Tipo = 'money' | 'pct' | 'int' | 'select' | 'check';
@@ -14,11 +14,18 @@ interface CampoDef {
   /** casas decimais mostradas para campos percentuais */
   opcoes?: ReadonlyArray<{ valor: string; rotulo: string }>;
   dica?: string;
+  /** só aparece quando a situação atual for uma destas */
+  soEm?: ReadonlyArray<SituacaoAtual>;
 }
 
 const SISTEMAS = [
   { valor: 'SAC', rotulo: 'SAC (parcela decrescente)' },
   { valor: 'PRICE', rotulo: 'PRICE (parcela fixa)' },
+] as const;
+const SITUACOES = [
+  { valor: 'nova-compra', rotulo: 'Nova compra (nada contratado ainda)' },
+  { valor: 'consorcio-em-andamento', rotulo: 'Já pago um consórcio (cota não contemplada)' },
+  { valor: 'financiamento-em-andamento', rotulo: 'Já pago um financiamento (imóvel já é meu)' },
 ] as const;
 const MODOS_EXTRA = [
   { valor: 'prazo', rotulo: 'Reduzir o prazo' },
@@ -29,6 +36,15 @@ const SECOES: ReadonlyArray<{ titulo: string; campos: ReadonlyArray<CampoDef> }>
   {
     titulo: 'Imóvel e premissas',
     campos: [
+      {
+        grupo: 'comum',
+        chave: 'situacaoAtual',
+        name: 'situacaoAtual',
+        label: 'Situação atual',
+        tipo: 'select',
+        opcoes: SITUACOES,
+        dica: 'O que já foi pago é custo afundado e fica fora do veredito. Consórcio e financiamento em andamento ao mesmo tempo não são suportados.',
+      },
       { grupo: 'comum', chave: 'valorImovel', name: 'valorImovel', label: 'Valor do imóvel (R$)', tipo: 'money' },
       { grupo: 'comum', chave: 'valorizacaoImovelAa', name: 'valorizacaoImovelAa', label: 'Valorização do imóvel (% a.a.)', tipo: 'pct' },
       { grupo: 'comum', chave: 'ipcaAa', name: 'ipcaAa', label: 'IPCA (% a.a.)', tipo: 'pct' },
@@ -42,6 +58,15 @@ const SECOES: ReadonlyArray<{ titulo: string; campos: ReadonlyArray<CampoDef> }>
   {
     titulo: 'Financiamento',
     campos: [
+      {
+        grupo: 'financiamento',
+        chave: 'parcelasPagas',
+        name: 'parcelasPagasFinanciamento',
+        label: 'Parcelas do financiamento já pagas',
+        tipo: 'int',
+        soEm: ['financiamento-em-andamento'],
+        dica: 'Os campos do financiamento abaixo descrevem o contrato original (valor do imóvel e entrada da contratação). O saldo devedor de hoje aparece no resumo para você conferir com o extrato.',
+      },
       { grupo: 'financiamento', chave: 'sistema', name: 'sistema', label: 'Sistema de amortização', tipo: 'select', opcoes: SISTEMAS },
       { grupo: 'financiamento', chave: 'entradaPct', name: 'entradaPct', label: 'Entrada (% do imóvel)', tipo: 'pct' },
       { grupo: 'financiamento', chave: 'jurosAa', name: 'jurosAa', label: 'Juros efetivos (% a.a.)', tipo: 'pct' },
@@ -61,6 +86,15 @@ const SECOES: ReadonlyArray<{ titulo: string; campos: ReadonlyArray<CampoDef> }>
   {
     titulo: 'Consórcio',
     campos: [
+      {
+        grupo: 'consorcio',
+        chave: 'parcelasPagas',
+        name: 'parcelasPagasConsorcio',
+        label: 'Parcelas do consórcio já pagas',
+        tipo: 'int',
+        soEm: ['consorcio-em-andamento'],
+        dica: 'Cota ainda não contemplada. O valor da carta abaixo é o crédito na adesão, e o mês da contemplação é contado desde o início do contrato.',
+      },
       { grupo: 'consorcio', chave: 'valorCarta', name: 'valorCarta', label: 'Valor da carta de crédito (R$)', tipo: 'money' },
       { grupo: 'consorcio', chave: 'prazoMeses', name: 'prazoMesesConsorcio', label: 'Prazo do grupo (meses)', tipo: 'int' },
       { grupo: 'consorcio', chave: 'taxaAdmPct', name: 'taxaAdmPct', label: 'Taxa de administração total (%)', tipo: 'pct' },
@@ -68,6 +102,14 @@ const SECOES: ReadonlyArray<{ titulo: string; campos: ReadonlyArray<CampoDef> }>
       { grupo: 'consorcio', chave: 'seguroAm', name: 'seguroAm', label: 'Seguro (% a.m. sobre o saldo)', tipo: 'pct' },
       { grupo: 'consorcio', chave: 'reajusteCartaAa', name: 'reajusteCartaAa', label: 'Reajuste anual da carta (%)', tipo: 'pct' },
       { grupo: 'consorcio', chave: 'mesContemplacao', name: 'mesContemplacao', label: 'Mês da contemplação', tipo: 'int' },
+      {
+        grupo: 'consorcio',
+        chave: 'redutorParcelaPct',
+        name: 'redutorParcelaPct',
+        label: 'Redutor de parcela (%)',
+        tipo: 'pct',
+        dica: 'Art. 22.6 do regulamento: antes da contemplação você paga a parcela reduzida; a diferença fica no saldo, e a parcela sobe depois de contemplado. 0 = sem redutor.',
+      },
       { grupo: 'consorcio', chave: 'lancePct', name: 'lancePct', label: 'Lance (% da base: crédito + adm + FR)', tipo: 'pct' },
       { grupo: 'consorcio', chave: 'embutidoPct', name: 'embutidoPct', label: 'Lance embutido (% da base)', tipo: 'pct' },
       { grupo: 'consorcio', chave: 'embutidoAbateSaldo', name: 'embutidoAbateSaldo', label: 'Embutido abate o saldo devedor', tipo: 'check' },
@@ -143,7 +185,7 @@ export function InputForm({ input, onChange, onReset }: Props) {
         <fieldset key={secao.titulo} className="secao">
           <legend>{secao.titulo}</legend>
           <div className="campos">
-            {secao.campos.map((campo) => {
+            {secao.campos.filter((campo) => !campo.soEm || campo.soEm.includes(input.comum.situacaoAtual)).map((campo) => {
               const id = `campo-${campo.name}`;
               if (campo.tipo === 'select') {
                 return (
@@ -156,6 +198,7 @@ export function InputForm({ input, onChange, onReset }: Props) {
                         </option>
                       ))}
                     </select>
+                    {campo.dica ? <span className="campo-dica">{campo.dica}</span> : null}
                   </label>
                 );
               }
