@@ -32,6 +32,7 @@ export type CategoriaKey =
   | 'aluguel'
   | 'lanceCaixa'
   | 'complemento'
+  | 'sobraEmEspecie'
   | 'restituicao';
 
 export const CATEGORIAS: ReadonlyArray<{ key: CategoriaKey; label: string }> = [
@@ -48,6 +49,7 @@ export const CATEGORIAS: ReadonlyArray<{ key: CategoriaKey; label: string }> = [
   { key: 'aluguel', label: 'Aluguel até a contemplação' },
   { key: 'lanceCaixa', label: 'Lance em dinheiro' },
   { key: 'complemento', label: 'Complemento do próprio bolso' },
+  { key: 'sobraEmEspecie', label: 'Sobra de crédito paga em espécie (entrada de caixa)' },
   { key: 'restituicao', label: 'Restituição da cota cancelada (entrada de caixa)' },
 ];
 
@@ -168,10 +170,11 @@ export function simulate(rawInput: ScenarioInput): Simulation {
   const consorcioEmAndamento = situacao === 'consorcio-em-andamento';
   const financiamentoEmAndamento = situacao === 'financiamento-em-andamento';
   const pagasCon = consorcioEmAndamento ? input.consorcio.parcelasPagas : 0;
-  const pagasFin = financiamentoEmAndamento ? input.financiamento.parcelasPagas : 0;
-
   const paramsFin = financingParams(input);
   const fin = simulateFinancing(paramsFin);
+  // a amortização extra pode encerrar o contrato antes do prazo: nunca há mais parcelas pagas do que o
+  // contrato real tem (no limite, o financiamento já está quitado: saldo zero); o aviso sai em riscos()
+  const pagasFin = financiamentoEmAndamento ? Math.min(input.financiamento.parcelasPagas, fin.rows.length) : 0;
   const saldoApos = (parcelas: number): number =>
     parcelas === 0 ? paramsFin.principal : (fin.rows[parcelas - 1]?.saldoFinal ?? 0);
   const saldoHoje = saldoApos(pagasFin);
@@ -277,6 +280,7 @@ export function fluxosConsorcio(sim: Simulation, con: ConsortiumResult = sim.con
     cat.aluguel[t] += r.aluguel;
     cat.lanceCaixa[t] += r.lanceCaixa;
     cat.complemento[t] += r.complemento;
+    cat.sobraEmEspecie[t] -= r.sobraEmEspecie;
     cat.itbiRegistro[t] += r.custosCompra;
     cat.tarifas[t] += r.tarifaAvaliacao;
   }

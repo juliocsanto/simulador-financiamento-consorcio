@@ -1,8 +1,19 @@
 import type { LinhaCusto } from '../../domain/comparison';
 import { fmtBRL } from '../../domain/format';
 
+/** Por que uma categoria de custo pode ficar negativa sem ser erro (só para as que não são entradas por natureza). */
+const EXPLICA_NEGATIVO: Partial<Record<LinhaCusto['key'], string>> = {
+  amortizacao:
+    'Principal negativo: em parte do contrato a TR corrige o saldo devedor mais do que a parcela amortiza (amortização negativa), e o saldo cresce; o principal só volta a ser pago no fim, por isso o VP pode ficar abaixo de zero.',
+  fundoReserva:
+    'Fundo de reserva negativo: a devolução no encerramento do grupo inclui o fundo já pago antes de hoje, que fica fora da conta como custo afundado.',
+};
+
 export function CostBreakdownTable({ linhas }: { linhas: LinhaCusto[] }) {
   const soma = (pick: (l: LinhaCusto) => number): number => linhas.reduce((s, l) => s + pick(l), 0);
+  const negativo = (l: LinhaCusto): boolean =>
+    [l.financiamento.nominal, l.financiamento.vp, l.consorcio.nominal, l.consorcio.vp].some((v) => v < -0.5);
+  const notas = linhas.filter((l) => EXPLICA_NEGATIVO[l.key] && negativo(l)).map((l) => EXPLICA_NEGATIVO[l.key] as string);
   return (
     <section className="card" aria-labelledby="custos-title">
       <h2 id="custos-title">Custos por categoria</h2>
@@ -43,6 +54,11 @@ export function CostBreakdownTable({ linhas }: { linhas: LinhaCusto[] }) {
           </tfoot>
         </table>
       </div>
+      {notas.map((n) => (
+        <p className="nota" key={n}>
+          {n}
+        </p>
+      ))}
     </section>
   );
 }

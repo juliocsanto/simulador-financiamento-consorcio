@@ -1,4 +1,4 @@
-import { fmtBRL, fmtMeses, fmtPct } from '../../domain/format';
+import { fmtBRL, fmtCustoLiquido, fmtMeses, fmtPct } from '../../domain/format';
 import type { PlanoQuitacao } from '../../domain/payoff';
 
 export function PayoffPlan({ plano }: { plano: PlanoQuitacao }) {
@@ -61,7 +61,7 @@ export function PayoffPlan({ plano }: { plano: PlanoQuitacao }) {
 
       <h3>Consórcio: seguir as parcelas ou antecipar</h3>
       <p className="nota">
-        Seguir as parcelas custa {fmtBRL(con.baselineNominal)} nominais e {fmtBRL(con.baselineVP)} em valor presente, incluindo {fmtBRL(con.baselineAdm)} de taxa de administração.{' '}
+        Seguir as parcelas {fmtCustoLiquido(con.baselineNominal)} nominais e {fmtCustoLiquido(con.baselineVP)} em valor presente, incluindo {fmtBRL(con.baselineAdm)} de taxa de administração.{' '}
         {con.quitarCompensa === null
           ? ''
           : con.quitarCompensa

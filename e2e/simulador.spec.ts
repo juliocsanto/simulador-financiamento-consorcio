@@ -121,3 +121,18 @@ test('f. salvar, recarregar, carregar e excluir um cenario', async ({ page }) =>
   }
   await expect(page.getByTestId('saved-list').locator('li', { hasText: nome })).toHaveCount(0);
 });
+
+test('g. fundo de reserva devolvido continua na tabela de custos por categoria', async ({ page }) => {
+  await campo(page, 'devolveFundoReserva').check();
+  const tabela = page.locator('section[aria-labelledby="custos-title"]');
+  await expect(tabela.locator('tbody th', { hasText: 'Fundo de reserva (consórcio)' })).toHaveCount(1);
+});
+
+test('h. cota quase quitada: a sobra de crédito volta em dinheiro e o consórcio não perde', async ({ page }) => {
+  await campo(page, 'situacaoAtual').selectOption('consorcio-em-andamento');
+  await preencher(page, 'parcelasPagasConsorcio', 199);
+  await expect(page.getByText(/voltam em dinheiro/).first()).toBeVisible();
+  await expect(page.getByTestId('verdict-winner')).not.toHaveText('Financiamento');
+  const tabela = page.locator('section[aria-labelledby="custos-title"]');
+  await expect(tabela.locator('tbody th', { hasText: 'Sobra de crédito paga em espécie' })).toHaveCount(1);
+});

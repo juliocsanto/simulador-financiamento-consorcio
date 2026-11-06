@@ -1,6 +1,7 @@
 import { AMORT_EXTRA_REFERENCIA, EMBUTIDO_TETO_TIPICO_PCT, LANCE_REFERENCIA_PCT } from './constants';
 import { fmtBRL, fmtMeses, fmtPct, fmtX } from './format';
 import { compararModosExtra } from './payoff';
+import { textoSobraDeCredito } from './consortium';
 import { somar, type Fluxos, type Simulation } from './simulation';
 import { anualParaMensal, valorPresente } from './rates';
 import type { Verdict } from './verdict';
@@ -40,6 +41,18 @@ function itensFinanciamento(sim: Simulation): ItemOculto[] {
   const paramsFin = sim.paramsFinHoje;
   const totais = sim.finTotals;
   const mesesRestantes = fin.rows.length - sim.parcelasPagasFinanciamento;
+  if (emAndamento && (mesesRestantes <= 0 || principal <= 0)) {
+    // contrato já quitado com os parâmetros informados: não há saldo, juros nem seguro daqui para frente
+    return [
+      {
+        id: 'fin-quitado',
+        lado: 'financiamento',
+        titulo: 'Financiamento já quitado',
+        texto: `Com os parâmetros informados o financiamento terminou no mês ${fin.rows.length}: não há saldo devedor, juros nem seguros daqui para frente. Confira o prazo e o saldo no extrato do banco.`,
+        valor: 0,
+      },
+    ];
+  }
   const f = input.financiamento;
   const co = input.comum.custoOportunidadeAa;
   const a12 = saldoNoMes(sim, MES_ANO_1);
@@ -109,7 +122,7 @@ function itensFinanciamento(sim: Simulation): ItemOculto[] {
       id: 'fin-prazo-vs-parcela',
       lado: 'financiamento',
       titulo: 'Reduzir prazo ou reduzir parcela',
-      texto: `Com ${fmtBRL(extraRef)} extras por mês: reduzir o prazo leva a ${fmtMeses(modos.mesesPrazo)} e VP de ${fmtBRL(modos.vpPrazo)}; reduzir a parcela mantém ${fmtMeses(modos.mesesParcela)} e VP de ${fmtBRL(modos.vpParcela)}. Neste cenário, ${melhorModo} sai mais barato.`,
+      texto: `Com ${fmtBRL(extraRef)} extras por mês: reduzir o prazo leva a ${fmtMeses(modos.mesesPrazo)} e VP de ${fmtBRL(modos.vpPrazo)}; reduzir a parcela termina em ${fmtMeses(modos.mesesParcela)} e VP de ${fmtBRL(modos.vpParcela)}. Neste cenário, ${melhorModo} sai mais barato.`,
       valor: modos.vpParcela - modos.vpPrazo,
     },
     {
@@ -140,7 +153,7 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
   const eq = verdict.sensibilidade.equilibrio;
   const textoEq =
     eq.situacao === 'equilibrio' && eq.mes !== null
-      ? `Se a contemplação passar do mês ${eq.mes}, o consórcio deixa de vencer.`
+      ? `Se a contemplação chegar ao mês ${eq.mes} ou depois, o consórcio deixa de vencer (empata ou perde).`
       : eq.situacao === 'vence-tarde' && eq.mes !== null
         ? `Neste cenário o consórcio perde com contemplação cedo e só passa a vencer a partir do mês ${eq.mes}.`
       : eq.situacao === 'sempre-vence'
@@ -200,8 +213,8 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
       lado: 'consorcio',
       titulo: 'O crédito pode não comprar o imóvel',
       texto: emAndamentoFin
-        ? `Na contemplação (mês ${cp.mes}) o saldo devedor do financiamento é ${fmtBRL(cp.precoImovel)} e o crédito disponível é ${fmtBRL(cp.creditoDisponivel)}: ${cp.complemento > 0 ? `você completa ${fmtBRL(cp.complemento)} do próprio bolso para quitar` : `sobram ${fmtBRL(cp.sobraCredito)} de crédito, que abatem o saldo do consórcio`}. A carta é reajustada ${fmtPct(c.reajusteCartaAa)} a.a.`
-        : `Na contemplação (mês ${cp.mes}) o imóvel custa ${fmtBRL(cp.precoImovel)} e o crédito disponível é ${fmtBRL(cp.creditoDisponivel)}: ${cp.complemento > 0 ? `você completa ${fmtBRL(cp.complemento)} do próprio bolso` : `sobram ${fmtBRL(cp.sobraCredito)} de crédito`}. O imóvel valoriza ${fmtPct(input.comum.valorizacaoImovelAa)} a.a. e a carta é reajustada ${fmtPct(c.reajusteCartaAa)} a.a.`,
+        ? `Na contemplação (mês ${cp.mes}) o saldo devedor do financiamento é ${fmtBRL(cp.precoImovel)} e o crédito disponível é ${fmtBRL(cp.creditoDisponivel)}: ${cp.complemento > 0 ? `você completa ${fmtBRL(cp.complemento)} do próprio bolso para quitar` : textoSobraDeCredito(cp)}. A carta é reajustada ${fmtPct(c.reajusteCartaAa)} a.a.`
+        : `Na contemplação (mês ${cp.mes}) o imóvel custa ${fmtBRL(cp.precoImovel)} e o crédito disponível é ${fmtBRL(cp.creditoDisponivel)}: ${cp.complemento > 0 ? `você completa ${fmtBRL(cp.complemento)} do próprio bolso` : textoSobraDeCredito(cp)}. O imóvel valoriza ${fmtPct(input.comum.valorizacaoImovelAa)} a.a. e a carta é reajustada ${fmtPct(c.reajusteCartaAa)} a.a.`,
       valor: cp.complemento,
     },
     {

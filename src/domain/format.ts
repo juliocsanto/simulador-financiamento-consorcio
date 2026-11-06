@@ -11,7 +11,9 @@ export const fmtPct = (frac: number | null | undefined, casas: 1 | 2 = 1): strin
   if (frac === null || frac === undefined || !Number.isFinite(frac)) return 'n/d';
   return `${(casas === 1 ? num1 : num2).format(frac * 100)}%`;
 };
-export const fmtNum = (v: number): string => num2.format(v);
+/** Custo para prosa: positivo vira "custa R$ X"; negativo (entra mais do que sai) vira "rende R$ X líquidos". */
+export const fmtCustoLiquido = (v: number): string => (v < 0 ? `rende ${fmtBRL(-v)} líquidos` : `custa ${fmtBRL(v)}`);
+export const fmtNum =(v: number): string => num2.format(v);
 export const fmtX = (v: number): string => `${num1.format(v)}x`;
 export const fmtMeses = (m: number): string => {
   const anos = Math.floor(m / 12);

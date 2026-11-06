@@ -48,7 +48,8 @@ function linhasDeCusto(sim: Simulation, ff: Fluxos, fc: Fluxos): LinhaCusto[] {
     financiamento: { nominal: somar(ff.porCategoria[key]), vp: valorPresente(ff.porCategoria[key], taxa) },
     consorcio: { nominal: somar(fc.porCategoria[key]), vp: valorPresente(fc.porCategoria[key], taxa) },
   })).filter(
-    (l) => Math.abs(l.financiamento.nominal) > 0.005 || Math.abs(l.consorcio.nominal) > 0.005,
+    (l) =>
+      [l.financiamento.nominal, l.financiamento.vp, l.consorcio.nominal, l.consorcio.vp].some((v) => Math.abs(v) > 0.005),
   );
 }
 

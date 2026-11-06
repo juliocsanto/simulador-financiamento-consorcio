@@ -4,8 +4,8 @@ import {
   JANELA_FRONT_LOADING_MESES,
   SENSIBILIDADE_CO_PP,
 } from './constants';
-import { simulateConsortium } from './consortium';
-import { fmtBRL, fmtMeses, fmtPct } from './format';
+import { simulateConsortium, textoSobraDeCredito } from './consortium';
+import { fmtBRL, fmtCustoLiquido, fmtMeses, fmtPct } from './format';
 import { anualParaMensal, valorPresente } from './rates';
 import {
   serieTotalConsorcio,
@@ -209,16 +209,19 @@ function razoes(
   const janela = JANELA_FRONT_LOADING_MESES;
   const frontFin = somar(fluxosFin.total.slice(0, janela + 1));
   const frontCon = somar(fluxosCon.total.slice(0, janela + 1));
+  // saldo líquido negativo = entra mais dinheiro do que sai (ex.: restituição ou sobra em espécie)
+  const liquido = (v: number, opcao: string): string =>
+    v < 0 ? `entram no bolso ${fmtBRL(-v)} líquidos no ${opcao}` : `saem do bolso ${fmtBRL(v)} no ${opcao}`;
   lista.push({
     titulo: 'Desembolso nos primeiros 5 anos',
-    texto: `Nos primeiros ${janela} meses saem do bolso ${fmtBRL(frontFin)} no financiamento e ${fmtBRL(frontCon)} no consórcio. Dinheiro desembolsado cedo deixa de render ${fmtPct(co)} a.a.`,
+    texto: `Nos primeiros ${janela} meses ${liquido(frontFin, 'financiamento')}; ${liquido(frontCon, 'consórcio')}. Dinheiro desembolsado cedo deixa de render ${fmtPct(co)} a.a.`,
     favorece: frontFin > frontCon ? 'consorcio' : frontFin < frontCon ? 'financiamento' : 'neutro',
   });
 
   if (vencedor !== vencedorIngenuo) {
     lista.push({
       titulo: 'As duas réguas discordam',
-      texto: `Pela soma nominal (régua ingênua) ${nomeOpcao(vencedorIngenuo)} parece melhor (${fmtBRL(resFin.totalNominal)} contra ${fmtBRL(resCon.totalNominal)}), mas ao descontar pelo custo de oportunidade ${nomeOpcao(vencedor)} vence: o tempo do dinheiro muda a conta.`,
+      texto: `Pela soma nominal (régua ingênua) ${nomeOpcao(vencedorIngenuo)} parece melhor (o financiamento ${fmtCustoLiquido(resFin.totalNominal)}; o consórcio ${fmtCustoLiquido(resCon.totalNominal)}), mas ao descontar pelo custo de oportunidade ${nomeOpcao(vencedor)} vence: o tempo do dinheiro muda a conta.`,
       favorece: vencedor === 'empate' ? 'neutro' : vencedor,
     });
   }
@@ -237,13 +240,42 @@ function riscosDeContratoEmAndamento(sim: Simulation): string[] {
     ];
   }
   if (sim.situacao === 'financiamento-em-andamento') {
+    const informadas = sim.input.financiamento.parcelasPagas;
+    const aviso =
+      informadas > sim.parcelasPagasFinanciamento
+        ? [
+            `Com esses parâmetros (incluindo a amortização extra) o financiamento termina no mês ${sim.fin.rows.length}, antes das ${informadas} parcelas informadas: com esses números ele já estaria quitado e a simulação considera saldo zero. Confira o prazo e o saldo no extrato do banco.`,
+          ]
+        : [];
     const cp = sim.con.contemplacao;
     const cobertura =
       cp.complemento > 0
         ? `O crédito disponível (${fmtBRL(cp.creditoDisponivel)}) NÃO cobre o saldo devedor do financiamento (${fmtBRL(cp.precoImovel)}): faltam ${fmtBRL(cp.complemento)} do próprio bolso.`
-        : `O crédito disponível (${fmtBRL(cp.creditoDisponivel)}) cobre o saldo devedor do financiamento (${fmtBRL(cp.precoImovel)}) e sobram ${fmtBRL(cp.sobraCredito)}, que abatem o saldo do consórcio.`;
+        : `O crédito disponível (${fmtBRL(cp.creditoDisponivel)}) cobre o saldo devedor do financiamento (${fmtBRL(cp.precoImovel)}): ${textoSobraDeCredito(cp)}.`;
     return [
+      ...aviso,
       `Quitar o financiamento com o consórcio, na contemplação (mês ${cp.mes}): ${cobertura} A administradora precisa aceitar a quitação de financiamento próprio e exigirá garantia.`,
+    ];
+  }
+  return [];
+}
+
+/** Bancos financiam até ~80% do imóvel no SFH/SBPE (cota de financiamento; ex.: Caixa, 80% LTV). */
+export const ENTRADA_MINIMA_MERCADO_PCT = 0.2;
+/** Acima disso o empréstimo é tão pequeno que avaliação, cadastro e tarifa mensal dominam o CET. */
+export const ENTRADA_ALTA_PCT = 0.8;
+
+function riscosDaEntrada(sim: Simulation): string[] {
+  if (sim.situacao === 'financiamento-em-andamento') return [];
+  const e = sim.input.financiamento.entradaPct;
+  if (e < ENTRADA_MINIMA_MERCADO_PCT) {
+    return [
+      `Entrada de ${fmtPct(e)}: os bancos costumam financiar no máximo cerca de ${fmtPct(1 - ENTRADA_MINIMA_MERCADO_PCT)} do imóvel (cota de financiamento do SFH/SBPE), então uma entrada abaixo de ${fmtPct(ENTRADA_MINIMA_MERCADO_PCT)} dificilmente é aprovada; confirme com o banco.`,
+    ];
+  }
+  if (e > ENTRADA_ALTA_PCT) {
+    return [
+      `Entrada de ${fmtPct(e)}: o valor financiado é pequeno e os custos fixos (avaliação, cadastro e tarifa mensal) pesam muito sobre ele, por isso o CET do financiamento fica alto. Com essa entrada, vale comparar também a compra à vista.`,
     ];
   }
   return [];
@@ -254,7 +286,7 @@ function riscos(sim: Simulation, sens: Sensibilidade): string[] {
   const eq = sens.equilibrio;
   if (eq.situacao === 'equilibrio' && eq.mes !== null) {
     out.push(
-      `Mês de equilíbrio: se a contemplação demorar até o mês ${eq.mes} ou mais, o consórcio deixa de compensar. Você assumiu o mês ${sim.con.contemplacao.mes}.`,
+      `Mês de equilíbrio: se a contemplação demorar até o mês ${eq.mes} ou mais, o consórcio deixa de compensar (empata ou perde). Você assumiu o mês ${sim.con.contemplacao.mes}.`,
     );
   } else if (eq.situacao === 'vence-tarde' && eq.mes !== null) {
     out.push(
@@ -276,9 +308,12 @@ function riscos(sim: Simulation, sens: Sensibilidade): string[] {
       `Juros altos (financiamento ${fmtPct(sim.input.financiamento.jurosAa)}, custo de oportunidade ${fmtPct(sim.input.comum.custoOportunidadeAa)}): o resultado fica muito sensível ao tempo e à taxa.`,
     );
   }
+  out.push(...riscosDaEntrada(sim));
   if (sim.input.consorcio.embutidoPct > 0) {
     out.push(
-      `Lance embutido (${fmtPct(sim.input.consorcio.embutidoPct)} da base) reduz o crédito em ${fmtBRL(sim.con.contemplacao.embutido)} e, pela regra configurada, ${sim.input.consorcio.embutidoAbateSaldo ? 'abate' : 'NÃO abate'} o saldo devedor: é a rota mais cara.`,
+      sim.input.consorcio.embutidoAbateSaldo
+        ? `Lance embutido (${fmtPct(sim.input.consorcio.embutidoPct)} da base) reduz o crédito em ${fmtBRL(sim.con.contemplacao.embutido)} e, pela regra configurada, abate o saldo devedor, custando o mesmo que um lance em dinheiro. Atenção: na regra usual das administradoras (ex.: Porto, Art. 22.6) o embutido NÃO abate o saldo, continua sendo pago e vira a rota mais cara; confirme no regulamento do seu grupo.`
+        : `Lance embutido (${fmtPct(sim.input.consorcio.embutidoPct)} da base) reduz o crédito em ${fmtBRL(sim.con.contemplacao.embutido)} e NÃO abate o saldo devedor (continua sendo pago nas parcelas): é a rota mais cara.`,
     );
   }
   out.push('Consórcio não garante a data de contemplação: sorteio e lance dependem do grupo e dos concorrentes.');
