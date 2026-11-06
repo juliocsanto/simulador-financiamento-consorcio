@@ -74,6 +74,8 @@ export interface ConsortiumRow {
   valorAUsar: number;
   /** total pago ao consórcio desde o mês 1 (parcelas + lance em dinheiro + quitação), acumulado até este mês */
   totalPago: number;
+  /** quanto o reajuste anual somou ao saldo devedor neste mês (0 fora do mês de reajuste) */
+  reajusteSaldo: number;
 }
 
 export interface Contemplacao {
@@ -274,8 +276,10 @@ export function simulateConsortium(p: ConsortiumCalcParams): ConsortiumResult {
   const fluxoCusto: number[] = [0];
 
   for (let mes = 1; mes <= p.prazoMeses; mes++) {
+    let reajusteSaldo = 0;
     if (ehMesDeReajuste(mes)) {
-      saldo *= 1 + p.reajusteCartaAa;
+      reajusteSaldo = saldo * p.reajusteCartaAa;
+      saldo += reajusteSaldo;
       parcelaFixa *= 1 + p.reajusteCartaAa;
       if (!contemplado) credito *= 1 + p.reajusteCartaAa;
     }
@@ -355,6 +359,7 @@ export function simulateConsortium(p: ConsortiumCalcParams): ConsortiumResult {
       creditoCorrigido: credito,
       valorAUsar: contemplacao ? contemplacao.creditoDisponivel : credito,
       totalPago: 0,
+      reajusteSaldo,
     });
     fluxoCusto[mes] = -(parcelaBase + seguro + quitacao) + creditoRecebidoLiquido;
     if (encerrou) break;

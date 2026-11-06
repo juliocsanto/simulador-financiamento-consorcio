@@ -194,6 +194,39 @@ describe('ScheduleTables', () => {
     expect(celulas.slice(-3)).toEqual([fmtBRLCents(r.valorAUsar), fmtBRLCents(r.totalPago), fmtBRLCents(r.saldoDevedor)]);
   });
 
+  it('consórcio, página 2: abre com o que vem do mês 36 e explica o reajuste do mês 37', () => {
+    render(<ScheduleTables sim={comparacao.sim} />);
+    abrir();
+    fireEvent.click(screen.getByRole('tab', { name: 'Consórcio' }));
+    expect(screen.queryByTestId('transporte-consorcio')).toBeNull();
+    const cabecalhos = [...document.querySelectorAll('thead th')].map((th) => th.textContent!.trim());
+    expect(cabecalhos).toContain('Reajuste do saldo');
+    fireEvent.click(screen.getByRole('button', { name: 'Próxima' }));
+    const [r36, r37] = [comparacao.sim.con.rows[35], comparacao.sim.con.rows[36]];
+    const transporte = screen.getByTestId('transporte-consorcio').textContent!;
+    expect(transporte).toContain('(mês 36)');
+    expect(transporte).toContain(fmtBRLCents(r36.totalPago));
+    expect(transporte).toContain(fmtBRLCents(r36.saldoDevedor));
+    expect(transporte).toContain(fmtBRLCents(r37.reajusteSaldo));
+    const primeira = document.querySelector('tbody tr')!;
+    expect(primeira.querySelector('th')?.textContent).toBe('37 (reajuste)');
+    const iReaj = cabecalhos.indexOf('Reajuste do saldo') - 1; // o th da linha não conta entre os td
+    expect(primeira.querySelectorAll('td')[iReaj].textContent).toBe(fmtBRLCents(r37.reajusteSaldo));
+  });
+
+  it('consórcio sem reajuste: a página 2 traz o transporte, sem frase de reajuste nem marca no mês 37', () => {
+    const d = defaultInput();
+    d.consorcio.reajusteCartaAa = 0;
+    render(<ScheduleTables sim={compare(d).sim} />);
+    abrir();
+    fireEvent.click(screen.getByRole('tab', { name: 'Consórcio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Próxima' }));
+    const transporte = screen.getByTestId('transporte-consorcio').textContent!;
+    expect(transporte).toContain('(mês 36)');
+    expect(transporte).not.toContain('reajuste');
+    expect(document.querySelector('tbody th')?.textContent).toBe('37');
+  });
+
   it('fechar o details esconde as tabelas', () => {
     render(<ScheduleTables sim={comparacao.sim} />);
     const details = abrir();

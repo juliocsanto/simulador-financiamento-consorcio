@@ -61,7 +61,14 @@ test('b. caso do usuario: consorcio em andamento com 41 parcelas pagas', async (
   await expect(linhas.first()).toHaveClass(/pago/);
   await expect(linhas.first()).toContainText('(já pago)');
   await expect(page.locator('details tbody tr.pago')).toHaveCount(36);
+  const ultimaP1 = await linhas.last().locator('td').allInnerTexts();
   await page.getByRole('button', { name: 'Próxima' }).click();
+  // a página 2 continua a 1: o transporte repete o total pago e o saldo do mês 36, e o mês 37 traz o reajuste
+  const transporte = page.getByTestId('transporte-consorcio');
+  await expect(transporte).toContainText('(mês 36)');
+  await expect(transporte).toContainText(ultimaP1[ultimaP1.length - 2]);
+  await expect(transporte).toContainText(ultimaP1[ultimaP1.length - 1]);
+  await expect(linhas.first().locator('th')).toContainText('37 (já pago) (reajuste)');
   // pagina 2: meses 37..72; 37..41 pagos, 42 em diante nao
   await expect(page.locator('details tbody tr.pago')).toHaveCount(5);
   await expect(linhas.nth(4)).toHaveClass(/pago/);
