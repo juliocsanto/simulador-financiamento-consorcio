@@ -5,6 +5,7 @@ import type { SavedScenario } from '../src/application/ports';
 import { createServices } from '../src/composition';
 import { compare } from '../src/domain/comparison';
 import { defaultInput } from '../src/domain/defaults';
+import { fmtBRLCents } from '../src/domain/format';
 import { buildPayoffPlan, type PlanoQuitacao } from '../src/domain/payoff';
 import type { ScenarioInput } from '../src/domain/types';
 import type { Verdict } from '../src/domain/verdict';
@@ -179,6 +180,18 @@ describe('ScheduleTables', () => {
     expect(document.querySelectorAll('tr.destaque')).toHaveLength(1);
     fireEvent.click(screen.getByRole('tab', { name: 'Financiamento' }));
     expect(screen.getByText('Correção TR')).toBeTruthy();
+  });
+
+  it('consórcio: "Valor a usar da carta" e "Total pago" ficam logo antes do Saldo devedor, com os valores da linha', () => {
+    render(<ScheduleTables sim={comparacao.sim} />);
+    abrir();
+    fireEvent.click(screen.getByRole('tab', { name: 'Consórcio' }));
+    const cabecalhos = [...document.querySelectorAll('thead th')].map((th) => th.textContent!.trim());
+    const i = cabecalhos.indexOf('Saldo devedor');
+    expect(cabecalhos.slice(i - 2, i + 1)).toEqual(['Valor a usar da carta', 'Total pago', 'Saldo devedor']);
+    const r = comparacao.sim.con.rows[0];
+    const celulas = [...document.querySelector('tbody tr')!.querySelectorAll('td')].map((td) => td.textContent);
+    expect(celulas.slice(-3)).toEqual([fmtBRLCents(r.valorAUsar), fmtBRLCents(r.totalPago), fmtBRLCents(r.saldoDevedor)]);
   });
 
   it('fechar o details esconde as tabelas', () => {

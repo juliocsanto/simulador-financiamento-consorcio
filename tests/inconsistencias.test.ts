@@ -335,3 +335,47 @@ describe('itens ocultos do consórcio não se contradizem (print do usuário, no
     expect(t).not.toContain('do bem pago');
   });
 });
+
+describe('cronograma do consórcio: valor a usar da carta e total pago', () => {
+  const cenarios: Array<[string, (d: ScenarioInput) => void]> = [
+    ['padrão', () => {}],
+    ['lance com embutido', (d) => { d.consorcio.lancePct = 0.3; d.consorcio.embutidoPct = 0.2; }],
+    ['sem reajuste', (d) => { d.consorcio.reajusteCartaAa = 0; }],
+    ['em andamento', (d) => { d.comum.situacaoAtual = 'consorcio-em-andamento'; d.consorcio.parcelasPagas = 41; d.consorcio.mesContemplacao = 45; }],
+    ['cota quitada na contemplação', (d) => { d.comum.situacaoAtual = 'consorcio-em-andamento'; d.consorcio.parcelasPagas = 41; d.consorcio.mesContemplacao = 42; d.consorcio.valorCarta = 1_000_000; d.consorcio.lancePct = 0.58; }],
+  ];
+
+  it.each(cenarios)('%s: total pago acumula parcela + lance em dinheiro + quitação e nunca cai', (_n, ajuste) => {
+    const { rows } = cenario(ajuste).sim.con;
+    let soma = 0;
+    rows.forEach((r, i) => {
+      soma += r.parcela + r.lanceCaixa + r.quitacao;
+      expect(r.totalPago).toBeCloseTo(soma, 6);
+      if (i > 0) expect(r.totalPago).toBeGreaterThanOrEqual(rows[i - 1].totalPago);
+    });
+  });
+
+  it.each(cenarios)('%s: valor a usar é a carta corrigida até a contemplação e o crédito liberado depois', (_n, ajuste) => {
+    const { rows, contemplacao: cp } = cenario(ajuste).sim.con;
+    for (const r of rows) {
+      if (r.mes < cp.mes) expect(r.valorAUsar).toBe(r.creditoCorrigido);
+      else expect(r.valorAUsar).toBe(cp.creditoDisponivel);
+    }
+  });
+
+  it('com embutido, o valor a usar cai na contemplação exatamente o embutido', () => {
+    const { rows, contemplacao: cp } = cenario((d) => { d.consorcio.lancePct = 0.3; d.consorcio.embutidoPct = 0.2; }).sim.con;
+    expect(cp.embutido).toBeGreaterThan(0);
+    expect(rows[cp.mes - 1].valorAUsar).toBeCloseTo(cp.creditoCorrigido - cp.embutido, 6);
+  });
+
+  it('sem reajuste, o valor a usar é a própria carta em todo o grupo (sem embutido)', () => {
+    const c = cenario((d) => { d.consorcio.reajusteCartaAa = 0; });
+    for (const r of c.sim.con.rows) expect(r.valorAUsar).toBeCloseTo(c.sim.input.consorcio.valorCarta, 6);
+  });
+
+  it('em andamento: o total pago no último mês pago bate com o "já pago"', () => {
+    const c = cenario((d) => { d.comum.situacaoAtual = 'consorcio-em-andamento'; d.consorcio.parcelasPagas = 41; d.consorcio.mesContemplacao = 45; });
+    expect(c.sim.con.rows[40].totalPago).toBeCloseTo(c.sim.con.jaPago, 6);
+  });
+});
