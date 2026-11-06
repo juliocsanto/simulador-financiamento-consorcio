@@ -275,7 +275,7 @@ describe('consórcio em andamento: t = 0 é hoje', () => {
     const desist = itens.find((i) => i.id === 'con-desistencia')!;
     expect(desist.texto).toContain('Se desistisse hoje');
     expect(desist.valor).toBeCloseTo(c.sim.restituicao!.valor, 6);
-    expect(itens.find((i) => i.id === 'con-sem-data')!.texto).toContain('contando a partir de hoje');
+    expect(itens.find((i) => i.id === 'con-sem-data')!.texto).toContain(`no mês ${c.sim.con.contemplacao.mes} do grupo (daqui a ${c.sim.con.contemplacao.mes - c.sim.parcelasPagasConsorcio}`);
     expect(itens.find((i) => i.id === 'con-adm-integral')!.texto).toContain('daqui para frente');
     expect(itens.some((i) => i.id === 'fin-custos-entrada')).toBe(true);
   });

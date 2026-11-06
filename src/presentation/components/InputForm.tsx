@@ -114,7 +114,7 @@ const SECOES: ReadonlyArray<{ titulo: string; campos: ReadonlyArray<CampoDef> }>
       { grupo: 'consorcio', chave: 'embutidoPct', name: 'embutidoPct', label: 'Lance embutido (% da base)', tipo: 'pct' },
       { grupo: 'consorcio', chave: 'embutidoAbateSaldo', name: 'embutidoAbateSaldo', label: 'Embutido abate o saldo devedor', tipo: 'check' },
       { grupo: 'consorcio', chave: 'modoPosLance', name: 'modoPosLance', label: 'Após o lance, reduzir', tipo: 'select', opcoes: MODOS_EXTRA },
-      { grupo: 'consorcio', chave: 'tarifaAvaliacaoConsorcio', name: 'tarifaAvaliacaoConsorcio', label: 'Avaliação do imóvel na contemplação (R$)', tipo: 'money' },
+      { grupo: 'consorcio', chave: 'tarifaAvaliacaoConsorcio', name: 'tarifaAvaliacaoConsorcio', label: 'Tarifa de avaliação do imóvel na contemplação (R$)', tipo: 'money' },
       { grupo: 'consorcio', chave: 'devolveFundoReserva', name: 'devolveFundoReserva', label: 'Considerar devolução do fundo de reserva', tipo: 'check' },
     ],
   },

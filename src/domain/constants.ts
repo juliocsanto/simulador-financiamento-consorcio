@@ -24,3 +24,11 @@ export const TIR_FAIXA_MAX_AA = 1.0;
 /** Passo (mensal) da varredura fina de raízes. */
 export const TIR_PASSO_FINO_AM = 0.0002;
 export const BISSECAO_ITERACOES = 60;
+/**
+ * Tarifa de avaliação (vistoria do imóvel) acima desta fração do valor do imóvel é quase certamente
+ * erro de digitação: o usuário informou o preço do imóvel no campo da tarifa (caso real, nov/2026:
+ * R$ 920.000 de "avaliação"). A tarifa de mercado fica na casa de R$ 1 mil a R$ 4 mil.
+ */
+export const TARIFA_AVALIACAO_MAX_PCT_IMOVEL = 0.02;
+export const tarifaImplausivel = (tarifa: number, valorImovel: number): boolean =>
+  valorImovel > 0 && tarifa > TARIFA_AVALIACAO_MAX_PCT_IMOVEL * valorImovel;

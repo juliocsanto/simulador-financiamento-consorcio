@@ -213,3 +213,125 @@ describe('régua ingênua com total nominal negativo', () => {
     }
   });
 });
+
+describe('itens ocultos do consórcio não se contradizem (print do usuário, nov/2026)', () => {
+  const ocultos = (c: ReturnType<typeof compare>) => buildHiddenCosts(c.sim, c.fluxosCon, c.verdict);
+  const parcelaItem = (c: ReturnType<typeof compare>) => ocultos(c).find((i) => i.id === 'con-parcela-cresce')!;
+
+  const cenariosVarridos: Array<[string, (d: ScenarioInput) => void]> = [
+    ['padrão', () => {}],
+    ['lance 30% reduzindo a parcela', (d) => { d.consorcio.lancePct = 0.3; }],
+    ['lance 58% reduzindo a parcela (print)', (d) => { d.consorcio.lancePct = 0.58; d.consorcio.valorCarta = 1_000_000; d.comum.valorImovel = 750_000; }],
+    ['lance 30% reduzindo o prazo', (d) => { d.consorcio.lancePct = 0.3; d.consorcio.modoPosLance = 'prazo'; }],
+    ['sem reajuste', (d) => { d.consorcio.reajusteCartaAa = 0; }],
+    ['redutor 30%', (d) => { d.consorcio.redutorParcelaPct = 0.3; }],
+    ['embutido', (d) => { d.consorcio.lancePct = 0.3; d.consorcio.embutidoPct = 0.2; }],
+    ['cota quitada na contemplação', (d) => { d.comum.situacaoAtual = 'consorcio-em-andamento'; d.consorcio.parcelasPagas = 41; d.consorcio.mesContemplacao = 42; d.consorcio.valorCarta = 1_000_000; d.consorcio.lancePct = 0.58; }],
+    ['financiamento em andamento', (d) => { d.comum.situacaoAtual = 'financiamento-em-andamento'; d.financiamento.parcelasPagas = 24; }],
+    // achado da varredura: sobe com o reajuste, cai na contemplação e termina acima do início
+    ['reajuste antes, lance reduzindo a parcela no mês 60', (d) => { d.consorcio.valorCarta = 700_000; d.consorcio.prazoMeses = 200; d.consorcio.mesContemplacao = 60; d.consorcio.lancePct = 0.3; d.consorcio.embutidoPct = 0.25; }],
+  ];
+
+  it('queda no meio do grupo não sai com título "cresce" mesmo terminando acima do início', () => {
+    const c = cenario((d) => { d.consorcio.valorCarta = 700_000; d.consorcio.prazoMeses = 200; d.consorcio.mesContemplacao = 60; d.consorcio.lancePct = 0.3; d.consorcio.embutidoPct = 0.25; });
+    const { titulo, texto } = parcelaItem(c);
+    expect(texto).toMatch(/ cai de /);
+    expect(titulo).toBe('A parcela sobe e desce ao longo do grupo');
+  });
+
+  it.each(cenariosVarridos)('%s: o título da parcela bate com os números', (_nome, ajuste) => {
+    const c = cenario(ajuste);
+    const futuras = c.sim.con.rows.slice(c.sim.parcelasPagasConsorcio).map((r) => r.parcela);
+    const primeira = futuras[0];
+    const passos = futuras.slice(1).map((x, i) => x / futuras[i]);
+    const subiu = Math.max(...futuras) > primeira * 1.005 || passos.some((x) => x > 1.005);
+    const caiu = Math.min(...futuras) < primeira * 0.995 || passos.some((x) => x < 0.995);
+    const { titulo, texto, valor } = parcelaItem(c);
+    if (/ cai de /.test(texto)) expect(titulo).not.toMatch(/cresce|estável/);
+    if (/ sobe de /.test(texto)) expect(titulo).not.toMatch(/ cai |estável/);
+    if (/cresce/.test(titulo)) expect(subiu && !caiu).toBe(true);
+    if (/ cai /.test(titulo)) expect(caiu && !subiu).toBe(true);
+    if (/sobe e desce/.test(titulo)) expect(subiu && caiu).toBe(true);
+    if (/estável/.test(titulo)) expect(subiu || caiu).toBe(false);
+    expect(texto).not.toMatch(/reajuste anual de 0,0%/);
+    expect(texto).not.toMatch(/NaN|Infinity/);
+    expect(valor).toBeGreaterThan(0);
+  });
+
+  it('lance que reduz a parcela: não diz "cresce" e explica a queda na contemplação', () => {
+    const c = cenario((d) => {
+      d.consorcio.lancePct = 0.58;
+      d.consorcio.valorCarta = 1_000_000;
+      d.comum.valorImovel = 750_000;
+      d.consorcio.reajusteCartaAa = 0;
+    });
+    const { titulo, texto } = parcelaItem(c);
+    expect(titulo).not.toMatch(/cresce/);
+    expect(texto).toMatch(/cai de R\$\s?[\d.]+ para R\$\s?[\d.]+ porque o lance abate o saldo e você escolheu reduzir a parcela/);
+  });
+
+  it('sem reajuste: parcela estável, sem atribuir crescimento a um reajuste de 0%', () => {
+    const { titulo, texto } = parcelaItem(cenario((d) => { d.consorcio.reajusteCartaAa = 0; }));
+    expect(titulo).toBe('A parcela fica estável neste cenário');
+    expect(texto).toContain('Sem reajuste da carta');
+  });
+
+  it('o salto pelo reajuste anual logo após a contemplação não é atribuído à contemplação', () => {
+    expect(parcelaItem(compare(defaultInput())).texto).not.toMatch(/depois da contemplação/);
+  });
+
+  it('em andamento: o mês da contemplação é o mesmo (do contrato) em todos os itens', () => {
+    const c = cenario((d) => {
+      d.comum.situacaoAtual = 'consorcio-em-andamento';
+      d.consorcio.parcelasPagas = 41;
+      d.consorcio.mesContemplacao = 45;
+    });
+    const mes = c.sim.con.contemplacao.mes;
+    const itens = ocultos(c);
+    expect(itens.find((i) => i.id === 'con-sem-data')!.texto).toContain(`no mês ${mes} do grupo (daqui a 4 meses)`);
+    expect(itens.find((i) => i.id === 'con-complemento')!.texto).toContain(`(mês ${mes})`);
+    for (const t of itens.map((i) => i.texto)) {
+      for (const achado of t.matchAll(/contemplação (?:no |\()?mês (\d+)/g)) expect(Number(achado[1])).toBe(mes);
+    }
+  });
+
+  it('embutido que abate o saldo não tem título "não abate o saldo"', () => {
+    const c = cenario((d) => {
+      d.consorcio.lancePct = 0.3;
+      d.consorcio.embutidoPct = 0.2;
+      d.consorcio.embutidoAbateSaldo = true;
+    });
+    const item = ocultos(c).find((i) => i.id === 'con-embutido')!;
+    expect(item.titulo).not.toMatch(/não abate/);
+    expect(item.texto).toContain('a dívida cai junto');
+  });
+
+  it('tarifa de avaliação com cara de preço do imóvel gera alerta e ressalva; tarifa normal não', async () => {
+    const { tarifaImplausivel } = await import('../src/domain/constants');
+    expect(tarifaImplausivel(2000, 600_000)).toBe(false);
+    expect(tarifaImplausivel(920_000, 750_000)).toBe(true);
+    expect(tarifaImplausivel(1000, 0)).toBe(false);
+    const absurda = cenario((d) => {
+      d.consorcio.tarifaAvaliacaoConsorcio = 920_000;
+      d.financiamento.tarifaAvaliacao = 700_000;
+    });
+    const riscos = absurda.verdict.riscos.filter((r) => r.startsWith('Tarifa de avaliação'));
+    expect(riscos).toHaveLength(2);
+    expect(riscos[1]).toMatch(/consórcio de R\$\s?920\.000.*parece que o valor do imóvel foi digitado/);
+    expect(ocultos(absurda).find((i) => i.id === 'con-exigencias')!.texto).toContain('parece ser o preço do imóvel');
+    const normal = compare(defaultInput());
+    expect(normal.verdict.riscos.some((r) => r.startsWith('Tarifa de avaliação'))).toBe(false);
+    expect(ocultos(normal).find((i) => i.id === 'con-exigencias')!.texto).not.toContain('parece');
+  });
+
+  it('desistência: o percentual é do bem, não "do bem pago"', () => {
+    const c = cenario((d) => {
+      d.comum.situacaoAtual = 'consorcio-em-andamento';
+      d.consorcio.parcelasPagas = 41;
+      d.consorcio.mesContemplacao = 45;
+    });
+    const t = ocultos(c).find((i) => i.id === 'con-desistencia')!.texto;
+    expect(t).toMatch(/voltaria só o que você pagou ao fundo comum \([\d,]+% do bem\)/);
+    expect(t).not.toContain('do bem pago');
+  });
+});

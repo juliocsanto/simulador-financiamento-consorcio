@@ -3,6 +3,8 @@ import {
   EMPATE_TECNICO_PCT_IMOVEL,
   JANELA_FRONT_LOADING_MESES,
   SENSIBILIDADE_CO_PP,
+  TARIFA_AVALIACAO_MAX_PCT_IMOVEL,
+  tarifaImplausivel,
 } from './constants';
 import { simulateConsortium, textoSobraDeCredito } from './consortium';
 import { fmtBRL, fmtCustoLiquido, fmtMeses, fmtPct } from './format';
@@ -281,6 +283,21 @@ function riscosDaEntrada(sim: Simulation): string[] {
   return [];
 }
 
+function riscosDasTarifas(sim: Simulation): string[] {
+  const v = sim.input.comum.valorImovel;
+  const out: string[] = [];
+  const checar = (rotulo: string, tarifa: number): void => {
+    if (tarifaImplausivel(tarifa, v)) {
+      out.push(
+        `${rotulo} de ${fmtBRL(tarifa)} passa de ${fmtPct(TARIFA_AVALIACAO_MAX_PCT_IMOVEL)} do imóvel: parece que o valor do imóvel foi digitado no campo da tarifa. A tarifa de avaliação é o custo da vistoria (costuma ficar entre R$ 1 mil e R$ 4 mil); confira o campo.`,
+      );
+    }
+  };
+  if (sim.situacao !== 'financiamento-em-andamento') checar('Tarifa de avaliação do financiamento', sim.input.financiamento.tarifaAvaliacao);
+  checar('Tarifa de avaliação do consórcio', sim.input.consorcio.tarifaAvaliacaoConsorcio);
+  return out;
+}
+
 function riscos(sim: Simulation, sens: Sensibilidade): string[] {
   const out: string[] = [];
   const eq = sens.equilibrio;
@@ -309,6 +326,7 @@ function riscos(sim: Simulation, sens: Sensibilidade): string[] {
     );
   }
   out.push(...riscosDaEntrada(sim));
+  out.push(...riscosDasTarifas(sim));
   if (sim.input.consorcio.embutidoPct > 0) {
     out.push(
       sim.input.consorcio.embutidoAbateSaldo

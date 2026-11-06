@@ -1,4 +1,4 @@
-import { AMORT_EXTRA_REFERENCIA, EMBUTIDO_TETO_TIPICO_PCT, LANCE_REFERENCIA_PCT } from './constants';
+import { AMORT_EXTRA_REFERENCIA, EMBUTIDO_TETO_TIPICO_PCT, LANCE_REFERENCIA_PCT, tarifaImplausivel } from './constants';
 import { fmtBRL, fmtMeses, fmtPct, fmtX } from './format';
 import { compararModosExtra } from './payoff';
 import { textoSobraDeCredito } from './consortium';
@@ -137,6 +137,71 @@ function itensFinanciamento(sim: Simulation): ItemOculto[] {
   return itens.filter((item) => !(emAndamento && item.id === 'fin-custos-entrada'));
 }
 
+/** variação abaixo disto conta como "estável" (arredondamento, centavos) */
+const TOLERANCIA_PARCELA = 0.005;
+
+const MESES_ANO = 12;
+/** parcela do mês seguinte sem nenhum evento: só o reajuste anual, quando cai naquele mês */
+const esperadaDepois = (parcela: number, mes: number, reajusteAa: number): number =>
+  mes > 1 && (mes - 1) % MESES_ANO === 0 ? parcela * (1 + reajusteAa) : parcela;
+
+/**
+ * Descreve a trajetória REAL da parcela daqui para frente. O título é derivado dos números,
+ * nunca afirmado: com lance "reduzir a parcela" ela cai na contemplação; sem reajuste fica plana;
+ * com redutor sobe depois da contemplação; a sobra pode quitar a cota.
+ */
+export function trajetoriaParcela(sim: Simulation): { titulo: string; texto: string; valor: number } {
+  const { con, input } = sim;
+  const c = input.consorcio;
+  const m = sim.parcelasPagasConsorcio;
+  const futuras = con.rows.slice(m);
+  const primeira = futuras[0];
+  const ultima = futuras[futuras.length - 1];
+  const pico = futuras.reduce((a, r) => (r.parcela > a.parcela ? r : a), primeira);
+  const piso = futuras.reduce((a, r) => (r.parcela < a.parcela ? r : a), primeira);
+  // direção pelos movimentos mês a mês: uma queda no meio conta mesmo se a parcela termina acima do início
+  const passos = futuras.slice(1).map((r, i) => r.parcela / futuras[i].parcela);
+  const sobe = pico.parcela > primeira.parcela * (1 + TOLERANCIA_PARCELA) || passos.some((x) => x > 1 + TOLERANCIA_PARCELA);
+  const cai = piso.parcela < primeira.parcela * (1 - TOLERANCIA_PARCELA) || passos.some((x) => x < 1 - TOLERANCIA_PARCELA);
+  const titulo = futuras.length === 1
+    ? 'Resta uma parcela'
+    : sobe && cai
+    ? 'A parcela sobe e desce ao longo do grupo'
+    : sobe
+      ? 'A parcela cresce com o reajuste'
+      : cai
+        ? 'A parcela cai ao longo do grupo'
+        : 'A parcela fica estável neste cenário';
+
+  const meio = sobe && pico.parcela > ultima.parcela * (1 + TOLERANCIA_PARCELA) ? `, chega a ${fmtBRL(pico.parcela)} no mês ${pico.mes}` : '';
+  let texto = futuras.length > 1
+    ? `A parcela começa em ${fmtBRL(primeira.parcela)}${meio} e termina em ${fmtBRL(ultima.parcela)} (mês ${ultima.mes}).`
+    : `Falta só uma parcela, de ${fmtBRL(ultima.parcela)} (mês ${ultima.mes}).`;
+
+  const causas: string[] = [];
+  if (futuras.length > 1) {
+    if (c.reajusteCartaAa > 0) causas.push(`o reajuste anual de ${fmtPct(c.reajusteCartaAa)} incide sobre o saldo devedor e empurra a parcela para cima`);
+    else causas.push('sem reajuste da carta, nada empurra a parcela para cima');
+  }
+  const cp = con.contemplacao;
+  if (cp.mes > m) {
+    const antes = con.rows[cp.mes - 1];
+    const depois = con.rows[cp.mes];
+    if (!depois) {
+      if (cp.mes < c.prazoMeses) causas.push(`a contemplação no mês ${cp.mes} quita a cota e as parcelas acabam ali`);
+    } else if (depois.parcela < esperadaDepois(antes.parcela, depois.mes, c.reajusteCartaAa) * (1 - TOLERANCIA_PARCELA)) {
+      const abate = cp.lanceCaixa > 0 || (cp.embutido > 0 && c.embutidoAbateSaldo) ? 'o lance' : cp.sobraCredito > 0 ? 'a sobra de crédito' : null;
+      const porque = abate ? ` porque ${abate} abate o saldo${c.modoPosLance === 'parcela' ? ' e você escolheu reduzir a parcela' : ''}` : '';
+      causas.push(`depois da contemplação (mês ${cp.mes}) ela cai de ${fmtBRL(antes.parcela)} para ${fmtBRL(depois.parcela)}${porque}`);
+    } else if (depois.parcela > esperadaDepois(antes.parcela, depois.mes, c.reajusteCartaAa) * (1 + TOLERANCIA_PARCELA)) {
+      const porque = c.redutorParcelaPct > 0 ? ': o redutor acaba e a diferença não paga volta para a parcela' : '';
+      causas.push(`depois da contemplação (mês ${cp.mes}) ela sobe de ${fmtBRL(antes.parcela)} para ${fmtBRL(depois.parcela)}${porque}`);
+    }
+  }
+  if (causas.length > 0) texto += ` ${causas.map((x, i) => (i === 0 ? x[0].toUpperCase() + x.slice(1) : x)).join('; ')}.`;
+  return { titulo, texto, valor: pico.parcela / primeira.parcela };
+}
+
 function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): ItemOculto[] {
   const { con, input } = sim;
   const c = input.consorcio;
@@ -144,9 +209,6 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
   const taxa = anualParaMensal(co);
   const m = sim.parcelasPagasConsorcio;
   const emAndamentoFin = sim.situacao === 'financiamento-em-andamento';
-  const primeira = con.rows[m];
-  const ultima = con.rows[con.rows.length - 1];
-  const fator = ultima.parcela / primeira.parcela;
   const cp = con.contemplacao;
   const aluguelNominal = somar(fluxosCon.porCategoria.aluguel);
   const aluguelVP = valorPresente(fluxosCon.porCategoria.aluguel, taxa);
@@ -166,14 +228,15 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
   const ateContemplacao = con.rows.filter((r) => r.mes > m && r.mes <= cp.mes);
   const fundoComumPago = ateContemplacao.reduce((s, r) => s + r.fundoComum, 0);
   const totalPagoAteAgora = ateContemplacao.reduce((s, r) => s + r.parcela, 0);
+  const parcela = trajetoriaParcela(sim);
 
   return [
     {
       id: 'con-parcela-cresce',
       lado: 'consorcio',
-      titulo: 'A parcela cresce com o reajuste',
-      texto: `A parcela começa em ${fmtBRL(primeira.parcela)} e termina em ${fmtBRL(ultima.parcela)}: ${fmtX(fator)} a inicial, porque o reajuste anual de ${fmtPct(c.reajusteCartaAa)} incide sobre o saldo devedor.`,
-      valor: fator,
+      titulo: parcela.titulo,
+      texto: parcela.texto,
+      valor: parcela.valor,
     },
     {
       id: 'con-adm-integral',
@@ -195,13 +258,13 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
       titulo: 'Contemplação não tem data',
       texto: emAndamentoFin
         ? `Você já mora no imóvel, então não há aluguel. Até a contemplação (mês ${cp.mes}) você paga o financiamento e o consórcio ao mesmo tempo. ${textoEq}`
-        : `Até a contemplação no mês ${cp.mes - m}${m > 0 ? ' (contando a partir de hoje)' : ''} você paga aluguel: ${fmtBRL(aluguelNominal)} nominais (${fmtBRL(aluguelVP)} em valor presente). ${textoEq}`,
+        : `Até a contemplação no mês ${cp.mes}${m > 0 ? ` do grupo (daqui a ${cp.mes - m} ${cp.mes - m === 1 ? 'mês' : 'meses'})` : ''} você paga aluguel: ${fmtBRL(aluguelNominal)} nominais (${fmtBRL(aluguelVP)} em valor presente). ${textoEq}`,
       valor: aluguelVP,
     },
     {
       id: 'con-embutido',
       lado: 'consorcio',
-      titulo: 'Lance embutido não abate o saldo',
+      titulo: c.embutidoPct > 0 && c.embutidoAbateSaldo ? 'Lance embutido reduz o crédito que você recebe' : 'Lance embutido não abate o saldo',
       texto:
         c.embutidoPct > 0
           ? `Seu embutido tira ${fmtBRL(cp.embutido)} do crédito e, pela regra configurada, ${c.embutidoAbateSaldo ? 'abate' : 'não abate'} o saldo devedor: ${c.embutidoAbateSaldo ? 'a dívida cai junto' : `você continua pagando ${fmtBRL(cp.embutido)} de um crédito que não recebeu`}.`
@@ -229,7 +292,7 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
       lado: 'consorcio',
       titulo: 'Desistência devolve só o fundo comum, no fim do grupo',
       texto: sim.restituicao
-        ? `Se desistisse hoje, só ${fmtPct(sim.restituicao.pctAmortizado)} do bem pago ao fundo comum voltaria, menos multa de ${fmtPct(sim.restituicao.multaPct)}: ${fmtBRL(sim.restituicao.valor)}, recebidos no mês ${sim.restituicao.t} a partir de hoje (STJ Tema 312). Risco de liquidez.`
+        ? `Se desistisse hoje, voltaria só o que você pagou ao fundo comum (${fmtPct(sim.restituicao.pctAmortizado)} do bem), menos multa de ${fmtPct(sim.restituicao.multaPct)}: ${fmtBRL(sim.restituicao.valor)}, recebidos no mês ${sim.restituicao.t} a partir de hoje (STJ Tema 312). Risco de liquidez.`
         : `Se desistisse na contemplação (mês ${cp.mes}), dos ${fmtBRL(totalPagoAteAgora)} pagos em parcelas só o fundo comum (${fmtBRL(fundoComumPago)}) voltaria, ao término do grupo (STJ Tema 312). Risco de liquidez.`,
       valor: sim.restituicao ? sim.restituicao.valor : fundoComumPago,
     },
@@ -237,7 +300,7 @@ function itensConsorcio(sim: Simulation, fluxosCon: Fluxos, verdict: Verdict): I
       id: 'con-exigencias',
       lado: 'consorcio',
       titulo: 'Exigências na contemplação',
-      texto: `Ao ser contemplado você precisa de garantia (o próprio imóvel), análise de renda e avaliação do bem. A avaliação custa ${fmtBRL(c.tarifaAvaliacaoConsorcio)} aqui e a análise pode recusar o imóvel ou o crédito.`,
+      texto: `Ao ser contemplado você precisa de garantia (o próprio imóvel), análise de renda e avaliação do bem. A tarifa de avaliação (vistoria do imóvel) custa ${fmtBRL(c.tarifaAvaliacaoConsorcio)} aqui${tarifaImplausivel(c.tarifaAvaliacaoConsorcio, input.comum.valorImovel) ? ', valor que parece ser o preço do imóvel e não a tarifa (costuma ficar entre R$ 1 mil e R$ 4 mil)' : ''} e a análise pode recusar o imóvel ou o crédito.`,
       valor: c.tarifaAvaliacaoConsorcio,
     },
     {
