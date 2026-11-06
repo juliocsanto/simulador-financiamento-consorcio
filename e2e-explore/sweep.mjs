@@ -10,6 +10,8 @@ const fixed = [
   { redutorParcelaPct: 35, mesContemplacao: 60 }, { mesContemplacao: 1 }, { mesContemplacao: 200 }, { mesContemplacao: 400 },
   { amortExtraMensal: 2000 }, { amortExtraMensal: 2000, modoAmortExtra: 'parcela' }, { fgtsSaldo: 80000, fgtsAporteMensal: 600 },
   { situacaoAtual:'consorcio-em-andamento', parcelasPagasConsorcio: 41, mesContemplacao: 60 },
+  { situacaoAtual:'consorcio-em-andamento', parcelasPagasConsorcio: 41, mesContemplacao: 42, valorImovel: 750000, valorCarta: 1000000, lancePct: 58, tarifaAvaliacaoConsorcio: 920000 },
+  { lancePct: 58, modoPosLance: 'parcela', valorCarta: 1000000, valorImovel: 750000 },
   { situacaoAtual:'consorcio-em-andamento', parcelasPagasConsorcio: 150, mesContemplacao: 160, valorCarta: 1000000 },
   { situacaoAtual:'financiamento-em-andamento', parcelasPagasFinanciamento: 60 },
   { situacaoAtual:'financiamento-em-andamento', parcelasPagasFinanciamento: 340 },
@@ -61,6 +63,19 @@ for (const sc of fixed) {
   const win = (await p.getByTestId('verdict-winner').innerText()).trim();
   if (!win.toLowerCase().startsWith(esperado.toLowerCase().slice(0,5))) bad(`vencedor "${win}" mas VP fin ${vp[0]} con ${vp[1]} → ${esperado}`);
   for (const id of ['verdict','hidden-costs','payoff-plan']) { const tx = await p.getByTestId(id).locator(':scope > p, :scope li, :scope p').allInnerTexts().then(a => a.join(' ')).catch(() => ''); const m = tx.match(/.{0,50}-R\$.{0,20}/); if (m) bad(`valor negativo em prosa (${id}): ${m[0]}`); }
+  // contradições título x texto nos itens ocultos do consórcio (print do usuário, nov/2026)
+  const li = async id => (await p.locator('#' + id).count()) ? (await p.locator('#' + id).innerText()) : '';
+  const parc = await li('con-parcela-cresce');
+  const ini = num((parc.match(/começa em (R\$\s?[\d.]+)/) || [])[1] || ''), fim = num((parc.match(/termina em (R\$\s?[\d.]+)/) || [])[1] || '');
+  if (/cresce/.test(parc.split('.')[0]) && (/ cai de /.test(parc) || fim < ini)) bad(`parcela "cresce" mas cai: ${parc.slice(0, 160)}`);
+  if (/estável/.test(parc.split('.')[0]) && Math.abs(fim - ini) > ini * 0.005) bad(`parcela "estável" mas muda: ${parc.slice(0, 160)}`);
+  if (/reajuste anual de 0,0%/.test(parc)) bad('parcela atribui crescimento a reajuste de 0%');
+  const emb = await li('con-embutido');
+  if (/não abate/.test(emb.split('.')[0]) && /a dívida cai junto/.test(emb)) bad('embutido: título "não abate" com texto "abate"');
+  const meses = new Set([...(await p.getByTestId('hidden-costs').innerText()).matchAll(/contemplação (?:no |\()?mês (\d+)/g)].map(x => x[1]));
+  if (meses.size > 1) bad('meses de contemplação divergentes entre itens: ' + [...meses].join(','));
+  const exig = await li('con-exigencias'); const tarifa = num((exig.match(/custa (R\$\s?[\d.]+)/) || [])[1] || '');
+  if (tarifa > 0.02 * (sc.valorImovel ?? 600000) && !/parece ser o preço do imóvel/.test(exig)) bad('tarifa de avaliação absurda sem ressalva');
   const e = sc.entradaPct ?? 20; const alertaE = /dificilmente é aprovada|compra à vista/.test(body);
   if ((sc.situacaoAtual ?? 'nova-compra') !== 'financiamento-em-andamento' && alertaE !== (e < 20 || e > 80)) bad(`alerta de entrada=${alertaE} com entrada ${e}%`);
   const neg = cat.rows.slice(2).filter(r => r[0] !== 'Total' && !/espécie|devolução|restitui/i.test(r[0]) && !(r[0].startsWith('Principal') && /amortização negativa/.test(body)) && !(r[0].startsWith('Fundo de reserva') && /Fundo de reserva negativo/.test(body))).filter(r => r.slice(1).some(c => num(c) < 0));
