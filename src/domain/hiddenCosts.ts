@@ -192,7 +192,16 @@ export function trajetoriaParcela(sim: Simulation): { titulo: string; texto: str
     } else if (depois.parcela < esperadaDepois(antes.parcela, depois.mes, c.reajusteCartaAa) * (1 - TOLERANCIA_PARCELA)) {
       const abate = cp.lanceCaixa > 0 || (cp.embutido > 0 && c.embutidoAbateSaldo) ? 'o lance' : cp.sobraCredito > 0 ? 'a sobra de crédito' : null;
       const porque = abate ? ` porque ${abate} abate o saldo${c.modoPosLance === 'parcela' ? ' e você escolheu reduzir a parcela' : ''}` : '';
-      causas.push(`depois da contemplação (mês ${cp.mes}) ela cai de ${fmtBRL(antes.parcela)} para ${fmtBRL(depois.parcela)}${porque}`);
+      // o reajuste pode cair no mês seguinte à contemplação: aí a parcela sobe menos do que subiria, mas não "cai"
+      const esperada = esperadaDepois(antes.parcela, depois.mes, c.reajusteCartaAa);
+      causas.push(
+        // mesma tolerância do título: só diz "cai" quando o título também enxerga a queda
+        depois.parcela < antes.parcela * (1 - TOLERANCIA_PARCELA)
+          ? `depois da contemplação (mês ${cp.mes}) ela cai de ${fmtBRL(antes.parcela)} para ${fmtBRL(depois.parcela)}${porque}`
+          : depois.parcela <= antes.parcela * (1 + TOLERANCIA_PARCELA)
+            ? `depois da contemplação (mês ${cp.mes}) ela fica em torno de ${fmtBRL(depois.parcela)} em vez de subir para ${fmtBRL(esperada)} com o reajuste${porque}`
+            : `depois da contemplação (mês ${cp.mes}) ela vai de ${fmtBRL(antes.parcela)} para ${fmtBRL(depois.parcela)}, abaixo dos ${fmtBRL(esperada)} que o reajuste levaria${porque}`,
+      );
     } else if (depois.parcela > esperadaDepois(antes.parcela, depois.mes, c.reajusteCartaAa) * (1 + TOLERANCIA_PARCELA)) {
       const porque = c.redutorParcelaPct > 0 ? ': o redutor acaba e a diferença não paga volta para a parcela' : '';
       causas.push(`depois da contemplação (mês ${cp.mes}) ela sobe de ${fmtBRL(antes.parcela)} para ${fmtBRL(depois.parcela)}${porque}`);

@@ -401,6 +401,12 @@ details > summary {
   }
 }
 
+/* cronograma do consórcio, página 2+: de onde vêm os acumulados */
+.transporte {
+  font-size: 0.9rem;
+  margin: 0 0 0.5rem;
+}
+
 /* contrato em andamento: meses já pagos (custo afundado) ficam esmaecidos no cronograma */
 tr.pago {
   opacity: 0.6;

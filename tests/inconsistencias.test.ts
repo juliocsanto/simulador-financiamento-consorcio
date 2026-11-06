@@ -379,3 +379,85 @@ describe('cronograma do consórcio: valor a usar da carta e total pago', () => {
     expect(c.sim.con.rows[40].totalPago).toBeCloseTo(c.sim.con.jaPago, 6);
   });
 });
+
+describe('cronograma do consórcio: cada mês continua o anterior (inclusive na virada de página)', () => {
+  const cenarios: Array<[string, (d: ScenarioInput) => void]> = [
+    ['padrão', () => {}],
+    ['lance com embutido', (d) => { d.consorcio.lancePct = 0.3; d.consorcio.embutidoPct = 0.2; }],
+    ['em andamento', (d) => { d.comum.situacaoAtual = 'consorcio-em-andamento'; d.consorcio.parcelasPagas = 41; d.consorcio.mesContemplacao = 60; d.consorcio.redutorParcelaPct = 0.35; }],
+    ['lance reduz o prazo, embutido abate saldo', (d) => { d.consorcio.lancePct = 0.4; d.consorcio.embutidoPct = 0.25; d.consorcio.embutidoAbateSaldo = true; d.consorcio.modoPosLance = 'prazo'; }],
+  ];
+
+  it.each(cenarios)('%s: saldo = saldo anterior + reajuste − amortização do mês', (_n, ajuste) => {
+    const { rows, contemplacao: cp } = cenario(ajuste).sim.con;
+    let anterior = cenario(ajuste).sim.con.base0;
+    for (const r of rows) {
+      const abateContemplacao = r.mes === cp.mes ? cp.saldoAntes - cp.saldoDepois : 0;
+      const esperado = anterior + r.reajusteSaldo - r.parcelaBase - abateContemplacao - r.quitacao;
+      if (r.saldoDevedor === 0) expect(esperado).toBeLessThan(1);
+      else expect(r.saldoDevedor).toBeCloseTo(esperado, 4);
+      anterior = r.saldoDevedor;
+    }
+  });
+
+  it('o reajuste anual cai no mês 13, 25, 37… e o mês 37 abre a página 2 com o saldo da página 1 corrigido', () => {
+    const c = cenario(() => {});
+    const { rows } = c.sim.con;
+    const meses = rows.filter((r) => r.reajusteSaldo > 0).map((r) => r.mes);
+    expect(meses.slice(0, 3)).toEqual([13, 25, 37]);
+    expect(rows[36].reajusteSaldo).toBeCloseTo(rows[35].saldoDevedor * c.sim.input.consorcio.reajusteCartaAa, 6);
+    expect(rows[36].saldoDevedor).toBeCloseTo(rows[35].saldoDevedor + rows[36].reajusteSaldo - rows[36].parcelaBase, 6);
+  });
+
+  it('sem reajuste, nenhum mês mexe no saldo além da amortização', () => {
+    const { rows } = cenario((d) => { d.consorcio.reajusteCartaAa = 0; }).sim.con;
+    expect(rows.every((r) => r.reajusteSaldo === 0)).toBe(true);
+  });
+});
+
+describe('trajetória da parcela: contemplação colada no reajuste (varredura SEED=23, nov/2026)', () => {
+  const caso = (d: ScenarioInput): void => {
+    d.consorcio.valorCarta = 700_000; d.consorcio.prazoMeses = 220; d.consorcio.taxaAdmPct = 0.25;
+    d.consorcio.mesContemplacao = 24; d.consorcio.lancePct = 0.3; d.consorcio.embutidoPct = 0.25;
+    d.consorcio.embutidoAbateSaldo = false; d.consorcio.modoPosLance = 'parcela';
+  };
+
+  it('queda de 0,3% no mês 25 (dentro da tolerância): título "cresce" e o texto não diz que ela "cai"', () => {
+    const c = cenario(caso);
+    const { rows } = c.sim.con;
+    expect(rows[24].parcela / rows[23].parcela).toBeGreaterThan(0.995);
+    const item = buildHiddenCosts(c.sim, c.fluxosCon, c.verdict).find((i) => i.id === 'con-parcela-cresce')!;
+    expect(item.titulo).toBe('A parcela cresce com o reajuste');
+    expect(item.texto).not.toMatch(/ cai de /);
+    expect(item.texto).toMatch(/em vez de subir para R\$/);
+  });
+
+  it.each([12, 24, 36, 60, 100])('contemplação no mês %i: o texto só diz "cai de A para B" com B < A e o título admitindo queda', (mes) => {
+    for (const lancePct of [0.1, 0.2, 0.3, 0.45]) {
+      const c = cenario((d) => { caso(d); d.consorcio.mesContemplacao = mes; d.consorcio.lancePct = lancePct; });
+      const item = buildHiddenCosts(c.sim, c.fluxosCon, c.verdict).find((i) => i.id === 'con-parcela-cresce')!;
+      const m = item.texto.match(/cai de (R\$\s?[\d.]+) para (R\$\s?[\d.]+)/);
+      if (m) {
+        const n = (x: string) => Number(x.replace(/\D/g, ''));
+        expect(n(m[2])).toBeLessThan(n(m[1]));
+        expect(item.titulo).toMatch(/desce|cai/);
+      }
+    }
+  });
+});
+
+describe('trajetória da parcela: sobe menos que o reajuste na contemplação', () => {
+  it('lance pequeno no mês 24: "vai de A para B, abaixo dos C" com A < B < C', () => {
+    const c = cenario((d) => {
+      d.consorcio.valorCarta = 700_000; d.consorcio.prazoMeses = 220; d.consorcio.taxaAdmPct = 0.25;
+      d.consorcio.mesContemplacao = 24; d.consorcio.lancePct = 0.04; d.consorcio.embutidoPct = 0.04;
+      d.consorcio.embutidoAbateSaldo = false; d.consorcio.modoPosLance = 'parcela';
+    });
+    const texto = buildHiddenCosts(c.sim, c.fluxosCon, c.verdict).find((i) => i.id === 'con-parcela-cresce')!.texto;
+    const m = texto.match(/vai de (R\$\s?[\d.]+) para (R\$\s?[\d.]+), abaixo dos (R\$\s?[\d.]+)/);
+    expect(m).not.toBeNull();
+    const [a, b, e] = [m![1], m![2], m![3]].map((x) => Number(x.replace(/\D/g, '')));
+    expect(a).toBeLessThan(b);
+    expect(b).toBeLessThan(e);
+  });
+});

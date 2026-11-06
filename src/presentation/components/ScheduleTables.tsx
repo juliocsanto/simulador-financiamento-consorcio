@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { PAGINA_CRONOGRAMA } from '../../domain/constants';
 import type { Simulation } from '../../domain/simulation';
-import { fmtBRLCents } from '../../domain/format';
+import { fmtBRLCents, fmtPct } from '../../domain/format';
 
 type Aba = 'financiamento' | 'consorcio';
 
@@ -64,8 +64,19 @@ function TabelaFinanciamento({ sim, pagina }: { sim: Simulation; pagina: number 
 
 function TabelaConsorcio({ sim, pagina }: { sim: Simulation; pagina: number }) {
   const linhas = sim.con.rows.slice(pagina * PAGINA_CRONOGRAMA, (pagina + 1) * PAGINA_CRONOGRAMA);
+  // página 2 em diante: os acumulados vêm da última linha da página anterior (o reajuste anual cai no 1º mês de cada página)
+  const anterior = pagina > 0 ? sim.con.rows[pagina * PAGINA_CRONOGRAMA - 1] : undefined;
   return (
     <div className="tabela-wrap">
+      {anterior ? (
+        <p className="transporte" data-testid="transporte-consorcio">
+          Vem da página anterior (mês {anterior.mes}): total pago {fmtBRLCents(anterior.totalPago)} · saldo devedor{' '}
+          {fmtBRLCents(anterior.saldoDevedor)} · valor a usar da carta {fmtBRLCents(anterior.valorAUsar)}.
+          {linhas[0] && linhas[0].reajusteSaldo > 0
+            ? ` No mês ${linhas[0].mes} o reajuste anual de ${fmtPct(sim.input.consorcio.reajusteCartaAa)} soma ${fmtBRLCents(linhas[0].reajusteSaldo)} ao saldo devedor e a parcela sobe na mesma proporção.`
+            : ''}
+        </p>
+      ) : null}
       <table>
         <thead>
           <tr>
@@ -77,6 +88,9 @@ function TabelaConsorcio({ sim, pagina }: { sim: Simulation; pagina: number }) {
             <th scope="col" className="num">Aluguel</th>
             <th scope="col" className="num">Lance + complemento + compra</th>
             <th scope="col" className="num">Desembolso</th>
+            <th scope="col" className="num" title="Reajuste anual da carta aplicado ao saldo devedor neste mês (inclusive depois da contemplação)">
+              Reajuste do saldo
+            </th>
             <th scope="col" className="num" title="Crédito disponível: a carta corrigida até a contemplação; depois, o crédito liberado (sem o lance embutido)">
               Valor a usar da carta
             </th>
@@ -93,6 +107,7 @@ function TabelaConsorcio({ sim, pagina }: { sim: Simulation; pagina: number }) {
                 {r.mes}
                 {r.mes <= sim.parcelasPagasConsorcio ? ' (já pago)' : ''}
                 {r.mes === sim.con.contemplacao.mes ? ' (contemplação)' : ''}
+                {r.reajusteSaldo > 0 ? ' (reajuste)' : ''}
               </th>
               <td className="num">{fmtBRLCents(r.parcela)}</td>
               <td className="num">{fmtBRLCents(r.fundoComum)}</td>
@@ -101,6 +116,7 @@ function TabelaConsorcio({ sim, pagina }: { sim: Simulation; pagina: number }) {
               <td className="num">{fmtBRLCents(r.aluguel)}</td>
               <td className="num">{fmtBRLCents(r.lanceCaixa + r.complemento + r.custosCompra + r.tarifaAvaliacao)}</td>
               <td className="num">{fmtBRLCents(r.desembolso)}</td>
+              <td className="num">{fmtBRLCents(r.reajusteSaldo)}</td>
               <td className="num">{fmtBRLCents(r.valorAUsar)}</td>
               <td className="num">{fmtBRLCents(r.totalPago)}</td>
               <td className="num">{fmtBRLCents(r.saldoDevedor)}</td>
