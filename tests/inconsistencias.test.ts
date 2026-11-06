@@ -127,4 +127,89 @@ describe('inconsistências encontradas na varredura Playwright (nov/2026)', () =
     expect(c.sim.con.contemplacao.sobraEmEspecie).toBe(0);
     expect(c.categorias.some((l) => l.key === 'sobraEmEspecie')).toBe(false);
   });
+
+  it('desembolso líquido negativo nos 5 primeiros anos vira "entram no bolso", nunca "saem do bolso -R$"', () => {
+    const c = cenario((d) => {
+      d.comum.situacaoAtual = 'consorcio-em-andamento';
+      d.consorcio.parcelasPagas = 150;
+      d.consorcio.mesContemplacao = 160;
+      d.consorcio.valorCarta = 1_000_000;
+    });
+    const r = c.verdict.razoes.find((x) => x.titulo.startsWith('Desembolso'))!;
+    expect(r.texto).not.toMatch(/-R\$/);
+    expect(r.texto).toMatch(/entram no bolso/);
+    const padrao = compare(defaultInput()).verdict.razoes.find((x) => x.titulo.startsWith('Desembolso'))!;
+    expect(padrao.texto).toMatch(/saem do bolso/);
+    expect(padrao.texto).not.toMatch(/-R\$/);
+  });
+});
+
+describe('fmtCustoLiquido (prosa sem "custa -R$")', () => {
+  it('positivo e zero custam; negativo rende líquido', async () => {
+    const { fmtCustoLiquido } = await import('../src/domain/format');
+    expect(fmtCustoLiquido(1000)).toMatch(/^custa R\$\s?1\.000$/);
+    expect(fmtCustoLiquido(0)).toMatch(/^custa R\$\s?0$/);
+    expect(fmtCustoLiquido(-748286)).toMatch(/^rende R\$\s?748\.286 líquidos$/);
+  });
+});
+
+describe('plano de quitação do consórcio não oferece quitar depois do fim real do contrato', () => {
+  it('cota quitada pela sobra na contemplação não lista "Ano 3" com saldo zero', async () => {
+    const { buildPayoffPlan } = await import('../src/domain/payoff');
+    const c = cenario((d) => {
+      d.comum.situacaoAtual = 'consorcio-em-andamento';
+      d.consorcio.parcelasPagas = 150;
+      d.consorcio.mesContemplacao = 160;
+      d.consorcio.valorCarta = 1_000_000;
+    });
+    const fim = c.sim.con.rows[c.sim.con.rows.length - 1].mes;
+    expect(fim).toBeLessThan(c.sim.paramsCon.prazoMeses);
+    const plano = buildPayoffPlan(c.sim).consorcio;
+    for (const q of plano.quitacoes) {
+      expect(q.mes).toBeLessThan(fim);
+      expect(q.valorQuitacao).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('financiamento em andamento com mais parcelas pagas do que o contrato real tem', () => {
+  const quitadoPelaExtra = (): ReturnType<typeof compare> =>
+    cenario((d) => {
+      d.comum.situacaoAtual = 'financiamento-em-andamento';
+      d.financiamento.parcelasPagas = 200;
+      d.financiamento.sistema = 'PRICE';
+      d.financiamento.entradaPct = 0.9;
+      d.financiamento.jurosAa = 0.08;
+      d.financiamento.prazoMeses = 420;
+      d.financiamento.amortExtraMensal = 500;
+    });
+
+  it('limita as parcelas pagas ao fim real (contrato já quitado: saldo zero) e avisa', () => {
+    const c = quitadoPelaExtra();
+    const fim = c.sim.fin.rows.length;
+    expect(fim).toBeLessThan(200);
+    expect(c.sim.parcelasPagasFinanciamento).toBe(fim);
+    expect(c.sim.saldoFinanciamentoHoje).toBe(0);
+    expect(c.verdict.riscos.join(' ')).toMatch(/termina no mês \d+/);
+  });
+
+  it('nenhum texto com NaN e nenhuma duração negativa', () => {
+    const c = quitadoPelaExtra();
+    const textos = [...c.verdict.riscos, ...c.verdict.razoes.map((r) => r.texto), ...buildHiddenCosts(c.sim, c.fluxosCon, c.verdict).flatMap((x) => Object.values(x).filter((v) => typeof v === 'string'))];
+    for (const t of textos) expect(t).not.toMatch(/NaN|Infinity/);
+    expect(c.sim.fin.rows.length - c.sim.parcelasPagasFinanciamento).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('régua ingênua com total nominal negativo', () => {
+  it('nunca escreve "-R$" na razão "As duas réguas discordam"', () => {
+    for (const pagas of [150, 170, 190, 199]) {
+      const c = cenario((d) => {
+        d.comum.situacaoAtual = 'consorcio-em-andamento';
+        d.consorcio.parcelasPagas = pagas;
+        d.consorcio.valorCarta = 1_000_000;
+      });
+      for (const r of c.verdict.razoes) expect(r.texto).not.toMatch(/-\s?R\$/);
+    }
+  });
 });

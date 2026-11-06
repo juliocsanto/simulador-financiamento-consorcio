@@ -41,6 +41,18 @@ function itensFinanciamento(sim: Simulation): ItemOculto[] {
   const paramsFin = sim.paramsFinHoje;
   const totais = sim.finTotals;
   const mesesRestantes = fin.rows.length - sim.parcelasPagasFinanciamento;
+  if (emAndamento && (mesesRestantes <= 0 || principal <= 0)) {
+    // contrato já quitado com os parâmetros informados: não há saldo, juros nem seguro daqui para frente
+    return [
+      {
+        id: 'fin-quitado',
+        lado: 'financiamento',
+        titulo: 'Financiamento já quitado',
+        texto: `Com os parâmetros informados o financiamento terminou no mês ${fin.rows.length}: não há saldo devedor, juros nem seguros daqui para frente. Confira o prazo e o saldo no extrato do banco.`,
+        valor: 0,
+      },
+    ];
+  }
   const f = input.financiamento;
   const co = input.comum.custoOportunidadeAa;
   const a12 = saldoNoMes(sim, MES_ANO_1);

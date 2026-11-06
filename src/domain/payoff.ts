@@ -211,10 +211,12 @@ export function planoConsorcio(sim: Simulation): PlanoConsorcio {
   const baselineNominal = somar(baselineSerie);
   const mesContemplacao = sim.con.contemplacao.mes;
   const quitacoes: QuitacaoConsorcio[] = [];
+  // o contrato pode acabar antes do prazo do grupo (ex.: a sobra de crédito quita o saldo na contemplação)
+  const fimReal = Math.min(sim.paramsCon.prazoMeses, sim.con.rows[sim.con.rows.length - 1].mes);
   for (const anos of ANOS_QUITACAO_CONSORCIO) {
     // os anos contam a partir de HOJE; com parcelas já pagas o mês do contrato é deslocado (e nunca cai antes de m+1)
     const mes = sim.parcelasPagasConsorcio + anos * MESES_POR_ANO;
-    if (mes >= sim.paramsCon.prazoMeses || mes <= mesContemplacao) continue;
+    if (mes >= fimReal || mes <= mesContemplacao) continue;
     const alt = simulateConsortium({ ...sim.paramsCon, quitacaoAntecipadaMes: mes });
     const serieAlt = serieTotalConsorcio(sim, alt);
     const vp = vpDe(serieAlt);

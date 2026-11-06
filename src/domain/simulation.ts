@@ -170,10 +170,11 @@ export function simulate(rawInput: ScenarioInput): Simulation {
   const consorcioEmAndamento = situacao === 'consorcio-em-andamento';
   const financiamentoEmAndamento = situacao === 'financiamento-em-andamento';
   const pagasCon = consorcioEmAndamento ? input.consorcio.parcelasPagas : 0;
-  const pagasFin = financiamentoEmAndamento ? input.financiamento.parcelasPagas : 0;
-
   const paramsFin = financingParams(input);
   const fin = simulateFinancing(paramsFin);
+  // a amortização extra pode encerrar o contrato antes do prazo: nunca há mais parcelas pagas do que o
+  // contrato real tem (no limite, o financiamento já está quitado: saldo zero); o aviso sai em riscos()
+  const pagasFin = financiamentoEmAndamento ? Math.min(input.financiamento.parcelasPagas, fin.rows.length) : 0;
   const saldoApos = (parcelas: number): number =>
     parcelas === 0 ? paramsFin.principal : (fin.rows[parcelas - 1]?.saldoFinal ?? 0);
   const saldoHoje = saldoApos(pagasFin);

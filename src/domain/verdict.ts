@@ -5,7 +5,7 @@ import {
   SENSIBILIDADE_CO_PP,
 } from './constants';
 import { simulateConsortium, textoSobraDeCredito } from './consortium';
-import { fmtBRL, fmtMeses, fmtPct } from './format';
+import { fmtBRL, fmtCustoLiquido, fmtMeses, fmtPct } from './format';
 import { anualParaMensal, valorPresente } from './rates';
 import {
   serieTotalConsorcio,
@@ -209,16 +209,19 @@ function razoes(
   const janela = JANELA_FRONT_LOADING_MESES;
   const frontFin = somar(fluxosFin.total.slice(0, janela + 1));
   const frontCon = somar(fluxosCon.total.slice(0, janela + 1));
+  // saldo líquido negativo = entra mais dinheiro do que sai (ex.: restituição ou sobra em espécie)
+  const liquido = (v: number, opcao: string): string =>
+    v < 0 ? `entram no bolso ${fmtBRL(-v)} líquidos no ${opcao}` : `saem do bolso ${fmtBRL(v)} no ${opcao}`;
   lista.push({
     titulo: 'Desembolso nos primeiros 5 anos',
-    texto: `Nos primeiros ${janela} meses saem do bolso ${fmtBRL(frontFin)} no financiamento e ${fmtBRL(frontCon)} no consórcio. Dinheiro desembolsado cedo deixa de render ${fmtPct(co)} a.a.`,
+    texto: `Nos primeiros ${janela} meses ${liquido(frontFin, 'financiamento')}; ${liquido(frontCon, 'consórcio')}. Dinheiro desembolsado cedo deixa de render ${fmtPct(co)} a.a.`,
     favorece: frontFin > frontCon ? 'consorcio' : frontFin < frontCon ? 'financiamento' : 'neutro',
   });
 
   if (vencedor !== vencedorIngenuo) {
     lista.push({
       titulo: 'As duas réguas discordam',
-      texto: `Pela soma nominal (régua ingênua) ${nomeOpcao(vencedorIngenuo)} parece melhor (${fmtBRL(resFin.totalNominal)} contra ${fmtBRL(resCon.totalNominal)}), mas ao descontar pelo custo de oportunidade ${nomeOpcao(vencedor)} vence: o tempo do dinheiro muda a conta.`,
+      texto: `Pela soma nominal (régua ingênua) ${nomeOpcao(vencedorIngenuo)} parece melhor (o financiamento ${fmtCustoLiquido(resFin.totalNominal)}; o consórcio ${fmtCustoLiquido(resCon.totalNominal)}), mas ao descontar pelo custo de oportunidade ${nomeOpcao(vencedor)} vence: o tempo do dinheiro muda a conta.`,
       favorece: vencedor === 'empate' ? 'neutro' : vencedor,
     });
   }
@@ -237,12 +240,20 @@ function riscosDeContratoEmAndamento(sim: Simulation): string[] {
     ];
   }
   if (sim.situacao === 'financiamento-em-andamento') {
+    const informadas = sim.input.financiamento.parcelasPagas;
+    const aviso =
+      informadas > sim.parcelasPagasFinanciamento
+        ? [
+            `Com esses parâmetros (incluindo a amortização extra) o financiamento termina no mês ${sim.fin.rows.length}, antes das ${informadas} parcelas informadas: com esses números ele já estaria quitado e a simulação considera saldo zero. Confira o prazo e o saldo no extrato do banco.`,
+          ]
+        : [];
     const cp = sim.con.contemplacao;
     const cobertura =
       cp.complemento > 0
         ? `O crédito disponível (${fmtBRL(cp.creditoDisponivel)}) NÃO cobre o saldo devedor do financiamento (${fmtBRL(cp.precoImovel)}): faltam ${fmtBRL(cp.complemento)} do próprio bolso.`
         : `O crédito disponível (${fmtBRL(cp.creditoDisponivel)}) cobre o saldo devedor do financiamento (${fmtBRL(cp.precoImovel)}): ${textoSobraDeCredito(cp)}.`;
     return [
+      ...aviso,
       `Quitar o financiamento com o consórcio, na contemplação (mês ${cp.mes}): ${cobertura} A administradora precisa aceitar a quitação de financiamento próprio e exigirá garantia.`,
     ];
   }
