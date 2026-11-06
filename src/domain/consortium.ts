@@ -67,6 +67,13 @@ export interface ConsortiumRow {
   desembolso: number;
   saldoDevedor: number;
   creditoCorrigido: number;
+  /**
+   * Valor a usar da carta: o crédito disponível. Até a contemplação, a carta corrigida pelo reajuste;
+   * da contemplação em diante, o crédito liberado (carta corrigida menos o lance embutido), que não corrige mais.
+   */
+  valorAUsar: number;
+  /** total pago ao consórcio desde o mês 1 (parcelas + lance em dinheiro + quitação), acumulado até este mês */
+  totalPago: number;
 }
 
 export interface Contemplacao {
@@ -346,6 +353,8 @@ export function simulateConsortium(p: ConsortiumCalcParams): ConsortiumResult {
       desembolso: 0,
       saldoDevedor: saldo,
       creditoCorrigido: credito,
+      valorAUsar: contemplacao ? contemplacao.creditoDisponivel : credito,
+      totalPago: 0,
     });
     fluxoCusto[mes] = -(parcelaBase + seguro + quitacao) + creditoRecebidoLiquido;
     if (encerrou) break;
@@ -361,7 +370,10 @@ export function simulateConsortium(p: ConsortiumCalcParams): ConsortiumResult {
     ultima.devolucaoFundoReserva = frPago;
     fluxoCusto[ultima.mes] += frPago;
   }
+  let totalPago = 0;
   for (const r of rows) {
+    totalPago += r.parcela + r.lanceCaixa + r.quitacao;
+    r.totalPago = totalPago;
     r.desembolso =
       r.parcela +
       r.quitacao +

@@ -66,6 +66,20 @@ test('b. caso do usuario: consorcio em andamento com 41 parcelas pagas', async (
   await expect(page.locator('details tbody tr.pago')).toHaveCount(5);
   await expect(linhas.nth(4)).toHaveClass(/pago/);
   await expect(linhas.nth(5)).not.toHaveClass(/pago/);
+
+  // colunas "Valor a usar da carta" e "Total pago" ao lado do saldo devedor; total pago só cresce
+  const cab = await page.locator('details thead th').allInnerTexts();
+  const iSaldo = cab.indexOf('Saldo devedor');
+  expect(cab.slice(iSaldo - 2, iSaldo + 1)).toEqual(['Valor a usar da carta', 'Total pago', 'Saldo devedor']);
+  const brl = (s: string) => Number(s.replace(/[^\d,]/g, '').replace(',', '.'));
+  const totais = (await page.locator(`details tbody tr td:nth-of-type(${iSaldo - 1})`).allInnerTexts()).map(brl);
+  expect(totais.length).toBe(36);
+  for (let i = 1; i < totais.length; i++) expect(totais[i]).toBeGreaterThan(totais[i - 1]);
+  // mês 41 (última parcela paga): o total pago é o "já pago" de R$ 170.658
+  expect(Math.round(totais[4])).toBeGreaterThanOrEqual(170_657);
+  expect(Math.round(totais[4])).toBeLessThanOrEqual(170_659);
+  const usar = (await page.locator(`details tbody tr td:nth-of-type(${iSaldo - 2})`).allInnerTexts()).map(brl);
+  expect(usar.every((v) => v >= 1_000_000)).toBe(true);
 });
 
 test('c. contemplacao abaixo do minimo vira o mes 42', async ({ page }) => {

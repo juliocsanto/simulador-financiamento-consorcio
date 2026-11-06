@@ -77,6 +77,12 @@ function TabelaConsorcio({ sim, pagina }: { sim: Simulation; pagina: number }) {
             <th scope="col" className="num">Aluguel</th>
             <th scope="col" className="num">Lance + complemento + compra</th>
             <th scope="col" className="num">Desembolso</th>
+            <th scope="col" className="num" title="Crédito disponível: a carta corrigida até a contemplação; depois, o crédito liberado (sem o lance embutido)">
+              Valor a usar da carta
+            </th>
+            <th scope="col" className="num" title="Acumulado pago ao consórcio desde o mês 1: parcelas, lance em dinheiro e quitação">
+              Total pago
+            </th>
             <th scope="col" className="num">Saldo devedor</th>
           </tr>
         </thead>
@@ -95,6 +101,8 @@ function TabelaConsorcio({ sim, pagina }: { sim: Simulation; pagina: number }) {
               <td className="num">{fmtBRLCents(r.aluguel)}</td>
               <td className="num">{fmtBRLCents(r.lanceCaixa + r.complemento + r.custosCompra + r.tarifaAvaliacao)}</td>
               <td className="num">{fmtBRLCents(r.desembolso)}</td>
+              <td className="num">{fmtBRLCents(r.valorAUsar)}</td>
+              <td className="num">{fmtBRLCents(r.totalPago)}</td>
               <td className="num">{fmtBRLCents(r.saldoDevedor)}</td>
             </tr>
           ))}
