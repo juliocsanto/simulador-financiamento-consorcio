@@ -219,12 +219,14 @@ summary:focus-visible {
 }
 
 .razoes,
-.riscos {
+.riscos,
+.passos {
   padding-left: 18px;
   margin: 0;
 }
 .razoes li,
-.riscos li {
+.riscos li,
+.passos li {
   margin-bottom: 8px;
 }
 .tag {
@@ -241,7 +243,8 @@ summary:focus-visible {
   color: var(--cor-con);
   border-color: var(--cor-con);
 }
-.razao-financiamento .tag {
+.razao-financiamento .tag,
+.passos .tag {
   color: var(--cor-fin);
   border-color: var(--cor-fin);
 }

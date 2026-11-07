@@ -8,6 +8,7 @@ import { CostBreakdownTable } from './components/CostBreakdownTable';
 import { Footer } from './components/Footer';
 import { HiddenCosts } from './components/HiddenCosts';
 import { InputForm } from './components/InputForm';
+import { NextSteps } from './components/NextSteps';
 import { PayoffPlan } from './components/PayoffPlan';
 import { SavedScenarios } from './components/SavedScenarios';
 import { ScheduleTables } from './components/ScheduleTables';
@@ -45,6 +46,7 @@ export function App({ services }: { services: Services }) {
           {resultado.ok ? (
             <>
               <VerdictCard verdict={resultado.report.comparacao.verdict} />
+              <NextSteps proximos={resultado.report.proximosPassos} />
               <SummaryTable comparacao={resultado.report.comparacao} />
               <CostBreakdownTable linhas={resultado.report.comparacao.categorias} />
               <Charts serie={resultado.report.comparacao.serie} />

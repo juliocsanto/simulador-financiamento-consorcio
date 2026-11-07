@@ -157,3 +157,21 @@ test('h. cota quase quitada: a sobra de crédito volta em dinheiro e o consórci
   const tabela = page.locator('section[aria-labelledby="custos-title"]');
   await expect(tabela.locator('tbody th', { hasText: 'Sobra de crédito paga em espécie' })).toHaveCount(1);
 });
+
+test('i. consorcio em andamento e financiamento melhor: mostra os proximos passos', async ({ page }) => {
+  await casoDoUsuario(page, 42);
+  await preencher(page, 'valorImovel', 920000);
+  await preencher(page, 'lancePct', 60);
+  await expect(page.getByTestId('verdict-winner')).toHaveText('Consórcio');
+  await expect(page.getByTestId('proximos-passos')).toHaveCount(0);
+
+  await preencher(page, 'entradaPct', 70);
+  await expect(page.getByTestId('verdict-winner')).toHaveText('Financiamento');
+  const passos = page.getByTestId('proximos-passos');
+  await expect(passos).toBeVisible();
+  await expect(passos.locator('ol > li').first()).toHaveAttribute('data-testid', 'passo-aprovar-credito');
+  await expect(page.getByTestId('passo-nao-dar-lance')).toBeVisible();
+  await expect(page.getByTestId('passo-vender-cota')).toContainText('286.769');
+  await expect(page.getByTestId('passo-quitar-cedo')).toContainText('em VP');
+  await passos.screenshot({ path: 'test-results/proximos-passos.png' });
+});

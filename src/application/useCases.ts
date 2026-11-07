@@ -1,5 +1,6 @@
 import { compare, type Comparison } from '../domain/comparison';
 import { buildHiddenCosts, type ItemOculto } from '../domain/hiddenCosts';
+import { buildProximosPassos, type ProximosPassos } from '../domain/nextSteps';
 import { buildPayoffPlan, type PlanoQuitacao } from '../domain/payoff';
 import { completarInput } from '../domain/normalize';
 import type { ScenarioInput } from '../domain/types';
@@ -9,6 +10,8 @@ export interface SimulationReport {
   comparacao: Comparison;
   quitacao: PlanoQuitacao;
   oculto: ItemOculto[];
+  /** só com consórcio em andamento e financiamento mais barato */
+  proximosPassos: ProximosPassos | null;
 }
 
 /** Caso de uso puro: roda comparação, plano de quitação e itens "o que não te contam". */
@@ -18,6 +21,7 @@ export function simulateComparison(input: ScenarioInput): SimulationReport {
     comparacao,
     quitacao: buildPayoffPlan(comparacao.sim),
     oculto: buildHiddenCosts(comparacao.sim, comparacao.fluxosCon, comparacao.verdict),
+    proximosPassos: buildProximosPassos(input, comparacao.sim, comparacao.verdict),
   };
 }
 
